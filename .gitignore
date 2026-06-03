@@ -1,0 +1,16 @@
+# 機密：不提交真實 API key
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 執行期資料/日誌
+data/
+*.log
+
+# 編輯器
+.vscode/
+.idea/
