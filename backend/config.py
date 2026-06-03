@@ -14,6 +14,9 @@ SPEED_HEAVY_WOUND = 3          # 重傷
 SPEED_DYING = 2               # 瀕死／被壓制
 SPEED_DOWN = 0                # 昏迷／重縛（自然排不進來）
 
+# ── 滾動摘要 ──
+KEEP_RECENT = 5               # 保留窗 W：記憶達 2W 時，把最舊 W 條摺進摘要
+
 # ── 運氣神諭（爭議行動才擲；對角色隱藏）──
 LUCK_TIERS = ["霉運", "平", "好運"]
 LUCK_WEIGHTS = [0.25, 0.50, 0.25]

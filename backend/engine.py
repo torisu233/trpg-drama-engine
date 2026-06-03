@@ -173,9 +173,10 @@ def ground_truth(s: Session) -> str:
 
 
 # ───────────────── 套用裁決 delta（防禦式，絕不崩） ─────────────────
-def _to_cond(d: DeltaItem) -> Condition:
+def _to_cond(d: DeltaItem, turn: int) -> Condition:
     return Condition(內容=d.內容, gates=d.gates, 程度=d.程度,
-                     可見性=d.可見性, 來源="裁決")
+                     可見性=d.可見性, 來源="裁決",
+                     剩餘拍數=d.剩餘拍數, 創建回合=turn)
 
 
 def _remove_matching(conds: List[Condition], key: str) -> List[Condition]:
@@ -184,9 +185,10 @@ def _remove_matching(conds: List[Condition], key: str) -> List[Condition]:
 
 def apply_delta(s: Session, adj: Adjudication) -> None:
     delta = adj.ledger_delta
+    turn = s.回合數
     # add
     for d in delta.add:
-        cond = _to_cond(d)
+        cond = _to_cond(d, turn)
         if d.主體 == "場景":
             if d.類別 == "空間關係":
                 s.會變層.場景.空間關係.append(cond)
@@ -213,7 +215,7 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
     # modify（簡化：當作 add 一條新狀況）
     for d in delta.modify:
         if d.主體 in s.會變層.角色:
-            s.會變層.角色[d.主體].身心狀況.append(_to_cond(d))
+            s.會變層.角色[d.主體].身心狀況.append(_to_cond(d, turn))
     # 衍生欄位更新
     for cid, sp in adj.速度更新.items():
         if cid in s.會變層.角色:
@@ -229,6 +231,25 @@ def distribute(s: Session, public: str, private: dict) -> None:
     for cid in s.scene.在場:
         msg = private.get(cid) or public
         s.記憶.setdefault(cid, []).append(msg)
+
+
+# ───────────────── 帳本清理：瞬態 TTL 自動過期 ─────────────────
+def _alive(c: Condition, turn: int) -> bool:
+    if c.剩餘拍數 is None or c.創建回合 is None:
+        return True
+    return (turn - c.創建回合) < c.剩餘拍數
+
+
+def expire_transients(s: Session) -> None:
+    """移除已到期的瞬態狀態（剩餘拍數用盡）。每拍結束呼叫。"""
+    turn = s.回合數
+    for cl in s.會變層.角色.values():
+        cl.身心狀況 = [c for c in cl.身心狀況 if _alive(c, turn)]
+        cl.特殊情況 = [c for c in cl.特殊情況 if _alive(c, turn)]
+    sc = s.會變層.場景
+    sc.場景事實 = [c for c in sc.場景事實 if _alive(c, turn)]
+    sc.空間關係 = [c for c in sc.空間關係 if _alive(c, turn)]
+    sc.社會事實 = [c for c in sc.社會事實 if _alive(c, turn)]
 
 
 # ───────────────── 結束條件 ─────────────────

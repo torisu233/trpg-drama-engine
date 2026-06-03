@@ -27,6 +27,8 @@ class Condition(BaseModel):
     可見性: str = "public"           # public | gm | faction:我方 | self:<id>
     來源: str = ""
     生命週期: str = ""
+    剩餘拍數: Optional[int] = None    # None=持久；整數=N 拍後自動過期（瞬態）
+    創建回合: Optional[int] = None    # 程式蓋章，配合剩餘拍數做 TTL
 
 
 class Item(BaseModel):
@@ -91,7 +93,8 @@ class Session(BaseModel):
     世界觀: World = Field(default_factory=World)
     角色卡: Dict[str, CharCard]
     會變層: Ledger
-    記憶: Dict[str, List[str]] = Field(default_factory=dict)   # 各角色持久對話記憶
+    記憶: Dict[str, List[str]] = Field(default_factory=dict)   # 各角色近期逐字敘事（滾動窗）
+    摘要: Dict[str, str] = Field(default_factory=dict)          # 各角色「先前劇情」滾動摘要
     公開日誌: List[str] = Field(default_factory=list)           # 給玩家看的敘事流
     回合數: int = 0
     pending: Optional[dict] = None                            # 等待玩家的狀態
@@ -122,6 +125,7 @@ class DeltaItem(BaseModel):
     gates: str = ""
     程度: Optional[str] = None
     可見性: str = "public"
+    剩餘拍數: Optional[int] = None      # 瞬態給 1-3；持久狀態留 null
 
 
 class LedgerDelta(BaseModel):
@@ -149,3 +153,7 @@ class Adjudication(BaseModel):
 class Narration(BaseModel):
     公開: str
     私密: Dict[str, str] = Field(default_factory=dict)     # char_id -> 私密敘事
+
+
+class Summary(BaseModel):
+    摘要: str

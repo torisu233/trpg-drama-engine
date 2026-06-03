@@ -7,7 +7,7 @@
 """
 from typing import Optional
 from .grok_client import GrokClient
-from .models import Session, Intent, Reaction, Adjudication, Narration
+from .models import Session, Intent, Reaction, Adjudication, Narration, Summary
 from . import engine, config
 
 
@@ -29,7 +29,9 @@ def _world_laws(s: Session) -> str:
 async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
     card = s.角色卡[cid]
     view = engine.build_view(s, cid)
-    mem = "\n".join(s.記憶.get(cid, [])[-6:]) or "（剛開場）"
+    摘要 = s.摘要.get(cid, "")
+    recent = "\n".join(s.記憶.get(cid, [])) or "（剛開場）"
+    mem = f"【先前劇情摘要】{摘要}\n\n【最近發生】\n{recent}" if 摘要 else recent
     陣營目標 = "盡力威脅、壓制對面那桌的人" if card.陣營 == "敵" else "與玩家同陣營，協作對抗刀疤"
     prompt = f"""你在一個跑團式互動遊戲裡扮演「{card.名}」。
 
@@ -143,6 +145,12 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 - 隱蔽行動：由你決定「表象」（全場可見）與「真意」（只我方懂），並判定隱蔽是否被識破。
 - **社會/資訊後果要落帳**：對話、談判、要挾若產生持久結果（招供、承諾、停火、結盟、情報揭露），
   用 ledger_delta 記為社會事實（主體填 "場景"，類別填 "社會事實" 或 "情報"），帶 gates 與可見性。
+- **瞬態狀態設期限**：姿勢晃動/被驚嚇/火光蔓延/暫時失衡等短暫狀態，add 時設「剩餘拍數」(1-3，幾拍後自動消失)；
+  傷勢/中毒/承諾/情緒轉變/社會事實等持久狀態留 null（不填）。
+- **升級即刪舊、嚴禁堆疊近義狀態**：當某狀態惡化/被取代（火越燒越旺、傷勢加重、姿勢改變），
+  **先把舊版本關鍵字放進 remove，再 add 新版本**——絕不讓帳本同時存在多條描述同一件事的近義狀態。
+- **同一事實只記一處**：招供/承諾/情報記成「社會事實」即可，**不要又複製一份到角色身心狀況**。
+- 可見性只能填這四種之一：`public` / `gm` / `faction:陣營` / `self:角色id`（不要自創其他值）。
 - 感知分發：判斷「誰察覺到這件事、察覺到多少」。昏迷者收不到；重傷分心可能漏看；背後動作可能未察覺。
 
 # 輸出（只輸出 JSON）
@@ -152,7 +160,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
  "可行性": "不可能/受阻/可行/需改寫",
  "結果階梯": "成功/成功但有代價/局勢逆轉",
  "ledger_delta": {{
-    "add": [{{"主體":"char_id或場景","類別":"姿勢位置/身心狀況/特殊情況/空間關係/場景事實/社會事實/情報","內容":"質性事實","gates":"如何約束後續","可見性":"public"}}],
+    "add": [{{"主體":"char_id或場景","類別":"姿勢位置/身心狀況/特殊情況/空間關係/場景事實/社會事實/情報","內容":"質性事實","gates":"如何約束後續","可見性":"public","剩餘拍數":null}}],
     "remove": ["要移除的狀態的關鍵字"],
     "modify": []
  }},
@@ -197,3 +205,27 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 只輸出 JSON：
 {{"公開":"全場可見的敘事","私密":{{"char_id":"該角色獨有的額外感知（可選，沒有就不要這個 key）"}}}}"""
     return await grok.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=700)
+
+
+# ───────────────── 滾動摘要：壓縮舊敘事，保連貫（只管文氣，不記事實） ─────────────────
+async def summarize_memory(grok: GrokClient, s: Session, cid: str,
+                           old: str, evicted: list) -> str:
+    name = s.角色卡[cid].名
+    block = "\n".join(evicted)
+    prompt = f"""你在維護「{name}」的劇情記憶摘要，供其後續扮演保持連貫。
+把【既有摘要】與【接下來發生的數拍】融合成**一段精簡、連貫**的摘要。
+
+# 既有摘要
+{old or "（無，這是第一次壓縮）"}
+
+# 新發生的數拍（需併入摘要，之後不再逐字保留）
+{block}
+
+# 要求
+- 以「{name}」的視角與已知來寫，保留：劇情走向、與各方的關係/恩怨變化、情緒起伏、未解的張力與懸念。
+- **不要記錄精確狀態數據**（誰傷在哪、誰站哪、確切承諾——那些另有帳本）；你只負責「故事感」與連貫。
+- 精簡，約 120 字內，一段話。
+
+只輸出 JSON：{{"摘要":"..."}}"""
+    out = await grok.call(prompt, Summary, temperature=0.4, max_tokens=400)
+    return out.摘要

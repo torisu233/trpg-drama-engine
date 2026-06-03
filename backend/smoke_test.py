@@ -3,8 +3,9 @@
 
 執行：  python -m backend.smoke_test
 """
+import asyncio
 from .scene import new_tavern_session
-from . import engine
+from . import engine, flow, agents, config
 from .models import Intent, Condition, Adjudication, LedgerDelta, DeltaItem
 
 
@@ -74,9 +75,47 @@ def t_delta():
     print("[delta] 狀態增刪與衍生欄更新生效  ✓")
 
 
+def t_expire():
+    s = new_tavern_session()
+    s.回合數 = 5
+    engine.apply_delta(s, Adjudication(ledger_delta=LedgerDelta(add=[
+        DeltaItem(主體="scar", 類別="身心狀況", 內容="被火光驚嚇後退", 剩餘拍數=2),
+        DeltaItem(主體="scar", 類別="身心狀況", 內容="右肋重傷"),   # 剩餘拍數 None = 持久
+    ])))  # 創建回合=5
+    blob = lambda: " ".join(c.內容 for c in s.會變層.角色["scar"].身心狀況)
+    s.回合數 = 6; engine.expire_transients(s)
+    assert "被火光驚嚇後退" in blob(), "剩餘2拍，第6回合(差1)應還在"
+    s.回合數 = 7; engine.expire_transients(s)
+    assert "被火光驚嚇後退" not in blob(), "剩餘2拍，第7回合(差2)應過期"
+    assert "右肋重傷" in blob(), "持久狀態(None)不該過期"
+    print("[TTL] 瞬態自動過期、持久狀態保留  ✓")
+
+
+async def _t_compress():
+    s = new_tavern_session()
+    s.記憶["scar"] = [f"第{i}拍敘事" for i in range(1, 13)]   # 12 條
+    async def fake_sum(grok, sess, cid, old, evicted):       # 替身，避免打 API
+        return f"[摘要:併入{len(evicted)}條]"
+    orig, agents.summarize_memory = agents.summarize_memory, fake_sum
+    try:
+        await flow._maybe_compress(None, s)
+    finally:
+        agents.summarize_memory = orig
+    assert len(s.記憶["scar"]) == 7, f"12 條應摺出 5 剩 7：{len(s.記憶['scar'])}"
+    assert s.記憶["scar"][0] == "第6拍敘事", "保留的應是較新的 5~9 條"
+    assert s.摘要.get("scar"), "應產生摘要"
+    print(f"[摘要] scar 記憶 12→{len(s.記憶['scar'])} 條 + 生成摘要（evict 最舊 {config.KEEP_RECENT} 條）  ✓")
+
+
+def t_compress():
+    asyncio.run(_t_compress())
+
+
 if __name__ == "__main__":
     t_action_bar()
     t_fog()
     t_two_axis()
     t_delta()
-    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta）")
+    t_expire()
+    t_compress()
+    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta/TTL/摘要）")
