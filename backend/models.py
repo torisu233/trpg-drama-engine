@@ -1,8 +1,9 @@
-"""資料模型：兩層狀態 + 各 agent 的結構化 I/O。
+"""資料模型：世界觀 + 兩層狀態 + 各 agent 的結構化 I/O。
 
 設計依據：跑團互動遊戲_設計文件.md
-- 第一層 角色卡（靜態）
-- 第二層 會變層（動態，唯一由裁決 delta 修改）
+- 世界觀（靜態）：基調 / 背景 / 法則（影響裁決的硬規則）
+- 第一層 角色卡（靜態）：演戲用欄位 + 裁決用特質（對手看不到）
+- 第二層 會變層（動態，唯一由裁決 delta 修改）：含「社會事實」
 - LLM I/O：意圖 / 反應 / 裁決雙輸出 / 敘事
 欄位採中文，與設計文件、prompt 對齊。
 """
@@ -10,7 +11,12 @@ from __future__ import annotations
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field
 
-VISIBILITY = ("public", "gm")  # 或 "faction:<陣營>" / "self:<char_id>"
+
+# ───────────────── 世界觀（靜態） ─────────────────
+class World(BaseModel):
+    基調: str = ""                                   # 類型/氛圍 → GM 語氣、角色接地
+    背景: str = ""                                   # ~200字設定 → 所有 agent 接地
+    法則: List[str] = Field(default_factory=list)     # 影響裁決的硬規則 → 裁決必須遵守
 
 
 # ───────────────── 狀態條目 ─────────────────
@@ -34,17 +40,24 @@ class Item(BaseModel):
 # ───────────────── 第一層：角色卡（靜態） ─────────────────
 class CharCard(BaseModel):
     名: str
-    陣營: str                         # 我方 / 敵
-    扮演: str = "agent"               # "玩家" | "agent"
-    背景: str = ""
+    陣營: str                              # 我方 / 敵 / 中立
+    扮演: str = "agent"                    # "玩家" | "agent"
+    # ── 演戲用（角色 agent 與本人讀；對手看不到）──
+    身分背景: str = ""                      # 出身、來歷、職業
     性格: List[str] = Field(default_factory=list)
-    能力: List[str] = Field(default_factory=list)
+    說話風格: str = ""                      # 語氣/口頭禪/用詞，讓對話有辨識度
+    動機目標: str = ""                      # 他這場想要什麼，驅動其選擇
+    行為偏好: List[str] = Field(default_factory=list)   # 慣用打法/手段：硬剛/陰招/談判/拖延/嘲諷…
+    # ── 裁決用（裁決全見；對手看不到，可為秘密）──
+    能力: List[str] = Field(default_factory=list)        # 擅長什麼（質性）
+    防禦特性: List[str] = Field(default_factory=list)     # 如「橫練皮糙肉厚，尋常拳腳難傷」「刀槍不入」
+    弱點: List[str] = Field(default_factory=list)         # 如「怕火」「左肋舊傷」「貪財可動搖」
 
 
 # ───────────────── 第二層：會變層（動態） ─────────────────
 class CharLedger(BaseModel):
     姿勢位置: str = ""
-    身心狀況: List[Condition] = Field(default_factory=list)
+    身心狀況: List[Condition] = Field(default_factory=list)   # 傷/生理/情緒/對人態度
     特殊情況: List[Condition] = Field(default_factory=list)   # 被綁/昏迷/失能
     物品: Dict[str, Item] = Field(default_factory=dict)
     隨身: List[Condition] = Field(default_factory=list)        # persistent（v1 預留）
@@ -56,7 +69,8 @@ class CharLedger(BaseModel):
 
 class SceneLedger(BaseModel):
     空間關係: List[Condition] = Field(default_factory=list)
-    場景事實: List[Condition] = Field(default_factory=list)
+    場景事實: List[Condition] = Field(default_factory=list)     # 環境 + 已揭露情報（用可見性控制誰知道）
+    社會事實: List[Condition] = Field(default_factory=list)     # 承諾/協議/結盟/停火/招供（帶 gates 與可見性）
 
 
 class Ledger(BaseModel):
@@ -74,6 +88,7 @@ class Scene(BaseModel):
 
 class Session(BaseModel):
     scene: Scene
+    世界觀: World = Field(default_factory=World)
     角色卡: Dict[str, CharCard]
     會變層: Ledger
     記憶: Dict[str, List[str]] = Field(default_factory=dict)   # 各角色持久對話記憶
@@ -102,7 +117,7 @@ class Reaction(BaseModel):
 
 class DeltaItem(BaseModel):
     主體: str                          # char_id 或 "場景"
-    類別: str                          # 姿勢位置/身心狀況/特殊情況/物品狀態/空間關係/場景事實
+    類別: str                          # 姿勢位置/身心狀況/特殊情況/物品狀態/空間關係/場景事實/社會事實/情報
     內容: str
     gates: str = ""
     程度: Optional[str] = None

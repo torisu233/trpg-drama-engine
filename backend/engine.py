@@ -118,6 +118,9 @@ def build_view(s: Session, viewer: str) -> str:
         + _fmt_conds(s.會變層.場景.空間關係, viewer, faction)
     if facts:
         lines.append("【場面】" + "；".join(facts))
+    social = _fmt_conds(s.會變層.場景.社會事實, viewer, faction)
+    if social:
+        lines.append("【約定/情報】" + "；".join(social))
 
     # 各角色（自己看全部；別人只看公開＋可見）
     for cid, cl in s.會變層.角色.items():
@@ -146,13 +149,19 @@ def build_view(s: Session, viewer: str) -> str:
 def ground_truth(s: Session) -> str:
     """給裁決的完整地面真相（全可見，含 gm 秘密）。"""
     lines = [f"【場景】{s.scene.地點}"]
-    for c in s.會變層.場景.場景事實 + s.會變層.場景.空間關係:
+    for c in s.會變層.場景.場景事實 + s.會變層.場景.空間關係 + s.會變層.場景.社會事實:
         tag = "" if c.可見性 == "public" else f" <{c.可見性}>"
         g = f"（{c.gates}）" if c.gates else ""
         lines.append(f"- {c.內容}{g}{tag}")
     for cid, cl in s.會變層.角色.items():
         card = s.角色卡[cid]
         lines.append(f"◆ {card.名}[{cid}]（{card.陣營}）速度{cl.行動速度} 感知:{cl.感知能力}")
+        if card.能力:
+            lines.append(f"  能力：{'、'.join(card.能力)}")
+        if card.防禦特性:
+            lines.append(f"  防禦特性：{'、'.join(card.防禦特性)}")
+        if card.弱點:
+            lines.append(f"  弱點：{'、'.join(card.弱點)}")
         lines.append(f"  姿勢位置：{cl.姿勢位置}")
         for c in cl.身心狀況 + cl.特殊情況 + cl.隨身:
             tag = "" if c.可見性 == "public" else f" <{c.可見性}>"
@@ -181,6 +190,8 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
         if d.主體 == "場景":
             if d.類別 == "空間關係":
                 s.會變層.場景.空間關係.append(cond)
+            elif d.類別 in ("社會事實", "承諾", "協議", "結盟", "停火"):
+                s.會變層.場景.社會事實.append(cond)
             else:
                 s.會變層.場景.場景事實.append(cond)
         elif d.主體 in s.會變層.角色:
@@ -198,6 +209,7 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
             cl.特殊情況 = _remove_matching(cl.特殊情況, key)
         s.會變層.場景.場景事實 = _remove_matching(s.會變層.場景.場景事實, key)
         s.會變層.場景.空間關係 = _remove_matching(s.會變層.場景.空間關係, key)
+        s.會變層.場景.社會事實 = _remove_matching(s.會變層.場景.社會事實, key)
     # modify（簡化：當作 add 一條新狀況）
     for d in delta.modify:
         if d.主體 in s.會變層.角色:

@@ -16,10 +16,10 @@ async def main():
     await flow.advance(grok, s)
     print(f">> 開場 pending = {s.pending and s.pending.get('type')}（玩家速度高，應先手）")
 
-    print("\n>> 玩家行動：亮刃說服刀疤")
+    print("\n>> 玩家行動：拔短刃直刺刀疤胸口（測試『橫練護體』防禦特性是否被裁決套用）")
     await flow.submit_player_action(grok, s, {
-        "行動": "說服", "目標": "scar",
-        "方式": "不動聲色亮出袖中短刃，冷聲說錢三日後雙倍奉還，今晚見血對誰都沒好處",
+        "行動": "攻擊", "目標": "scar",
+        "方式": "猛然拔出短刃，全力直刺刀疤胸口",
         "隱蔽": False,
     })
 
