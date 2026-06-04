@@ -51,14 +51,14 @@ def handle_command(cmd: str, s) -> bool:
 def ask_action(s):
     """回傳 action dict，或字串指令 'quit'。"""
     while True:
-        act = input("\n▶ 你想做什麼（一句話，含具體做法）> ").strip()
+        act = input("\n▶ 你想做什麼（一句話含做法；可附帶小動作，如攻擊同時對阿青使眼色）> ").strip()
         if act in ("quit", "q"):
             return "quit"
         if handle_command(act, s):
             continue
         if not act:
             act = "按兵不動"
-        tgt_raw = input("  目標（刀疤 / 阿青 / 留空=無對象）> ").strip().lower()
+        tgt_raw = input("  主要對象（刀疤 / 阿青 / 留空=無）> ").strip().lower()
         if tgt_raw in ("quit", "q"):
             return "quit"
         if handle_command(tgt_raw, s):
@@ -70,18 +70,17 @@ def ask_action(s):
 
 def ask_reaction(s, incoming: str):
     """回傳 reaction dict，或字串指令 'quit'。"""
-    print(f"\n{'⚔'*3} 來襲：{incoming}")
-    print("    你必須反應！")
+    print(f"\n{'⚔'*3} 刀疤對你出招/喊話：{incoming}")
+    print("    輪到你回應！")
     while True:
-        typ = input("▶ 反應類型（閃避/格擋/反擊/硬抗/後仰躲開…）> ").strip()
-        if typ in ("quit", "q"):
+        r = input("▶ 你要如何回應（閃避/格擋/反擊/還嘴/喝止…，一句話含做法）> ").strip()
+        if r in ("quit", "q"):
             return "quit"
-        if handle_command(typ, s):
+        if handle_command(r, s):
             continue
-        if not typ:
-            typ = "硬抗"
-        方式 = input("  方式（具體怎麼做）> ").strip()
-        return {"類型": typ, "方式": 方式}
+        if not r:
+            r = "硬抗"
+        return {"反應": r}
 
 
 async def main():

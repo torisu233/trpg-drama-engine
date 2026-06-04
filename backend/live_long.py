@@ -16,7 +16,7 @@ ACTIONS = [
     {"行動": "抄起油燈逼近，火光直照他的臉", "目標": "scar", "隱蔽": False},
     {"行動": "趁他退縮，短刃直取他持刀的手腕", "目標": "scar", "隱蔽": False},
 ]
-REACTION = {"類型": "格擋", "方式": "側身抬臂擋開，順勢後撤半步"}
+REACTION = {"反應": "側身抬臂格擋，順勢後撤半步"}
 
 
 async def main():
@@ -32,7 +32,7 @@ async def main():
             print(f"  >> 玩家[{s.回合數}]：{act['行動']} {act.get('方式','')}")
             await flow.submit_player_action(grok, s, act)
         elif p.get("type") == "player_reaction":
-            print(f"  >> 玩家反應[{s.回合數}]：{REACTION['類型']}（來襲：{p.get('incoming','')[:30]}…）")
+            print(f"  >> 玩家回應[{s.回合數}]：{REACTION['反應']}（來襲：{p.get('incoming','')[:30]}…）")
             await flow.submit_player_reaction(grok, s, REACTION)
         else:
             await flow.advance(grok, s)

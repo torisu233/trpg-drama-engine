@@ -111,10 +111,9 @@ class Intent(BaseModel):
 
 
 class Reaction(BaseModel):
-    """防禦者的反應意圖（是意圖不是判決）。"""
+    """被鎖定者的回應意圖（是意圖不是判決；可防禦/反擊/還嘴/喝止…）。"""
     actor: str = ""
-    類型: str                          # 閃避/格擋/反擊/抗拒/假意順從/硬抗/...
-    方式: str = ""
+    反應: str                          # 一句話：你要如何回應（含具體做法）
 
 
 class DeltaItem(BaseModel):

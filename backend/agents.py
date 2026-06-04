@@ -63,9 +63,10 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 - 顧及世界觀（例如對方若武功高強、護體難傷，硬拚未必明智）。
 - 若你身負重傷或處於不利，可保守行動甚至放棄（行動填「按兵不動」）。
 - 想隱蔽地行動（使眼色、暗號）就把「隱蔽」設為 true。
+- 可以「一個主要動作 + 一個附帶小動作」（如攻擊同時使眼色、後撤同時嘲諷）；別貪多，一兩件即可。「目標」填**主要對象**。
 
 只輸出 JSON：
-{{"行動":"一句話：你想做什麼（含具體做法），貼著你的口吻","目標":"player或aqing或scar或null","隱蔽":false}}"""
+{{"行動":"一句話：你想做什麼（含做法，可附帶一個小動作），貼著你的口吻","目標":"主要對象 player/aqing/scar/null","隱蔽":false}}"""
     out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=400)
     out.actor = cid
     return out
@@ -88,11 +89,11 @@ async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: s
 {incoming}
 
 # 你的任務
-這是針對你的行動，你要「如何反應」。
-規則：只表達反應「意圖」，**不宣告成敗**（成敗由裁決決定）。貼著你的性格與本事選擇。
+你被點名了，決定「你要如何回應」——可以防禦（閃避/格擋）、反擊、還嘴、喝止、順勢而為…貼著你的性格與本事。
+規則：只表達回應「意圖」，**不宣告成敗**（成敗由裁決決定）。
 
 只輸出 JSON：
-{{"類型":"閃避/格擋/反擊/抗拒/假意順從/硬抗/後仰躲開/...","方式":"具體一句話，貼著你的口吻"}}"""
+{{"反應":"一句話：你要如何回應（含具體做法），貼著你的口吻"}}"""
     out = await grok.call(prompt, Reaction, temperature=config.TEMP_CHARACTER, max_tokens=300)
     out.actor = cid
     return out
@@ -110,7 +111,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
     react_txt = "（無人反應 / 突襲 / 對失能者）"
     if reaction:
         rn = s.角色卡.get(reaction.actor)
-        react_txt = f"{rn.名 if rn else reaction.actor} 反應：{reaction.類型}；{reaction.方式}"
+        react_txt = f"{rn.名 if rn else reaction.actor} 回應：{reaction.反應}"
     luck_txt = luck or "（非爭議，不擲運氣）"
     在場 = "、".join(f"{cid}={s.角色卡[cid].名}" for cid in s.scene.在場)
 
@@ -142,6 +143,9 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 - 後果要「質的、會改變能力」：寫「右臂中刀只能用左手」而非數值。
 - 運氣：霉運→下調一階或加倒楣並發狀況；好運→容許罕見乾淨成功或有利轉折；平→照常。
 - 隱蔽行動：由你決定「表象」（全場可見）與「真意」（只我方懂），並判定隱蔽是否被識破。
+- **複合行動**：一拍可能含「一個主要動作 + 附帶小動作」（如攻擊同時打暗號、後撤同時嘲諷）。請**逐部分裁決**，
+  並權衡「一心二用」的代價——通常主要動作打折、或附帶動作不完全到位（正是「成功但有代價」的好題材）。
+  「目標」只是主要反應對象；附帶對象（如收暗號的隊友）由你在感知分發處理，不必另收反應。
 - **社會/資訊後果要落帳**：對話、談判、要挾若產生持久結果（招供、承諾、停火、結盟、情報揭露），
   用 ledger_delta 記為社會事實（主體填 "場景"，類別填 "社會事實" 或 "情報"），帶 gates 與可見性。
 - **瞬態狀態設期限**：姿勢晃動/被驚嚇/火光蔓延/暫時失衡等短暫狀態，add 時設「剩餘拍數」(1-3，幾拍後自動消失)；
@@ -172,10 +176,37 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 
 
 # ───────────────── GM / 敘事 agent ─────────────────
-async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Intent) -> Narration:
+def _vis_label(v: str) -> str:
+    if v == "public":
+        return "公開"
+    if v.startswith("faction"):
+        return "僅該陣營知"
+    if v.startswith("self"):
+        return "僅本人知"
+    return "機密gm，公開版絕不可寫"
+
+
+async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Intent,
+                  reaction: Optional[Reaction] = None) -> Narration:
     在場 = "、".join(f"{cid}={s.角色卡[cid].名}" for cid in s.scene.在場)
     分發 = "\n".join(f"- {cid}（{s.角色卡[cid].名}）：{lvl}"
                      for cid, lvl in adj.感知分發.items()) or "- 全體：全部"
+
+    actor = s.角色卡.get(intent.actor)
+    actor_name = actor.名 if actor else intent.actor
+    行動者行 = f"{actor_name} 宣告：{intent.行動}" \
+               + (f"（目標 {intent.目標}）" if intent.目標 else "") \
+               + ("（試圖隱蔽）" if intent.隱蔽 else "")
+    反應行 = ""
+    if reaction:
+        rn = s.角色卡.get(reaction.actor)
+        反應行 = f"\n# 對方回應\n{rn.名 if rn else reaction.actor}：{reaction.反應}"
+    變更 = "\n".join(f"- {d.內容}（{_vis_label(d.可見性)}）" for d in adj.ledger_delta.add) \
+           or "（本拍無新增狀態）"
+    近期敘事 = "\n".join(s.公開日誌[-2:]) or "（開場）"
+    公開錨點 = "；".join(c.內容 for c in (s.會變層.場景.空間關係 + s.會變層.場景.場景事實)
+                        if c.可見性 == "public") or "（無）"
+
     prompt = f"""你是跑團遊戲的 GM／敘事者。把這一拍寫成貼著視角、生動的散文。
 
 # 世界觀基調（決定文字風格）
@@ -184,20 +215,35 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 # 在場角色 id
 {在場}
 
+# 故事進展（玩家剛看到的；承接它，但**絕不可重述**已寫過的事件或對白）
+{近期敘事}
+
+# 目前場面（公開錨點，保持一致、別寫出矛盾）
+{公開錨點}
+
+# 本拍行動者
+{行動者行}{反應行}
+
 # 這一拍的地面真相（你知道全部）
 {adj.GM摘要}
 （結果階梯：{adj.結果階梯}；可行性：{adj.可行性}）
+
+# 本拍實際造成的狀態變更（忠實據此敘事，注意每條的可見性）
+{變更}
 
 # 感知分發（誰察覺到多少——據此決定每人版本能寫什麼）
 {分發}
 
 # 敘事原則
-- **嚴禁發明新實體（最重要）**：只能描寫「地面真相摘要」與「在場角色」中已存在的人、武器、物品、環境。
-  不得無中生有——例如本場景是冷兵器酒館，就**不可出現槍、子彈**，也**不可冒出摘要裡沒有的人物**（如不存在的人質）。
-  摘要沒提到的細節，寧可不寫，也不要編造。武器只能是角色實際持有的那些。
+- **只寫本拍的新發展（最重要）**：承接上方「故事進展」，但**不可復述已寫過的事件或對白**；同一角色別把類似的話再講一次。
+  本拍若只是「繼續拖延/僵持」，就只寫這拍**新增**的細節（一個眼神、半步移動、一句新話），別重描整個場面。
+- **準確歸屬、忠於事實（同樣關鍵）**：嚴格按上面「行動者 / 對方回應 / 狀態變更」寫「**誰**做了什麼、**誰**被影響」。
+  不可張冠李戴（把某人的事寫到另一人頭上，如該是「阿青的繞背意圖被識破」卻寫成「玩家無處藏身」）；
+  不可改寫事件性質（如把「計謀被識破」寫成「某人暴露躲藏」）。摘要/變更沒說的因果，不要自行發明。
+- **嚴禁發明新實體**：只能描寫地面真相與在場角色中已存在的人、武器、物品、環境（冷兵器酒館不可出現槍、子彈，不可冒出不存在的人物）。
 - 貼世界觀基調的語氣寫；後果是質的、會改變能力。
 - **這一拍必須收在一個威脅或選擇上**，逼人想回應。
-- 公開版：寫全場都能看到的客觀經過（不可洩漏 <gm> 秘密或只有單方知道的真意）。
+- 公開版：只寫全場可見的客觀經過；**標「機密gm」或「僅本人/僅該陣營知」的變更，絕不可寫進公開版**。
 - 私密版：只為「察覺到更多」的角色加寫他獨有的感知（如我方才懂的暗號真意）；沒有額外資訊的角色可省略。
 - 控制在 2-4 句，緊湊。
 

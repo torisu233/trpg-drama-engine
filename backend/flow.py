@@ -37,7 +37,7 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent: Intent,
     """收齊意圖(+反應+運氣)後：裁決→套用→敘事→分發→扣行動條→每拍維護。"""
     adj = await agents.adjudicate(grok, s, intent, reaction, luck)
     engine.apply_delta(s, adj)
-    narr = await agents.narrate(grok, s, adj, intent)
+    narr = await agents.narrate(grok, s, adj, intent, reaction)
     engine.distribute(s, narr.公開, narr.私密)
     engine.consume_turn(s, actor)
     s.回合數 += 1

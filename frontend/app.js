@@ -36,10 +36,10 @@ function render(s) {
     box.innerHTML = `
       <div class="panel">
         <strong>輪到你行動（第 ${s.回合數} 拍）</strong>
-        <label>你想做什麼（一句話，含具體做法）</label>
-        <textarea id="act" rows="2" placeholder="例：掀翻桌子撞向刀疤 / 抄起油燈逼近他 / 繞到他背後貼牆摸近"></textarea>
+        <label>你想做什麼（一句話含做法；可附帶小動作，如攻擊同時對阿青使眼色）</label>
+        <textarea id="act" rows="2" placeholder="例：佯攻刀疤、同時對阿青使眼色要他繞後 / 抄起油燈逼近他"></textarea>
         <div class="row">
-          <div><label>目標</label>
+          <div><label>主要對象</label>
             <select id="tgt">
               <option value="">（無對象）</option>
               <option value="scar">刀疤(敵)</option>
@@ -52,13 +52,11 @@ function render(s) {
       </div>`;
   } else if (p.type === "player_reaction") {
     box.innerHTML = `
-      <div class="threat">⚔ 來襲：${escapeHtml(p.incoming || "")}<br>你必須反應！</div>
+      <div class="threat">⚔ 刀疤對你出招/喊話：${escapeHtml(p.incoming || "")}<br>輪到你回應！</div>
       <div class="panel">
-        <label>反應類型</label>
-        <input id="rtype" placeholder="閃避 / 格擋 / 反擊 / 硬抗 / 後仰躲開…">
-        <label>方式</label>
-        <textarea id="rway" rows="2" placeholder="例：翻身滾到桌下 / 抬臂格開並反手一刀"></textarea>
-        <button onclick="sendReaction()">反應</button>
+        <label>你要如何回應（閃避/格擋/反擊/還嘴/喝止…，一句話含做法）</label>
+        <textarea id="react" rows="2" placeholder="例：翻身滾到桌下 / 抬臂格開並反手一刀 / 冷笑回敬，趁他挪動欺身上前"></textarea>
+        <button onclick="sendReaction()">回應</button>
       </div>`;
   }
 }
@@ -76,7 +74,7 @@ async function sendAction(){
   render(await post("/api/action", { action }));
 }
 async function sendReaction(){
-  const reaction = { 類型: val("rtype") || "硬抗", 方式: val("rway") };
+  const reaction = { 反應: val("react") || "硬抗" };
   document.getElementById("input").innerHTML = `<p class="muted">裁決中…</p>`;
   render(await post("/api/react", { reaction }));
 }
