@@ -51,7 +51,7 @@ def handle_command(cmd: str, s) -> bool:
 def ask_action(s):
     """回傳 action dict，或字串指令 'quit'。"""
     while True:
-        act = input("\n▶ 你的行動（攻擊/說服/後撤/對話/移動/按兵不動）> ").strip()
+        act = input("\n▶ 你想做什麼（一句話，含具體做法）> ").strip()
         if act in ("quit", "q"):
             return "quit"
         if handle_command(act, s):
@@ -64,9 +64,8 @@ def ask_action(s):
         if handle_command(tgt_raw, s):
             continue
         目標 = TARGET_ALIAS.get(tgt_raw, tgt_raw or None)
-        方式 = input("  方式（具體怎麼做，一句話）> ").strip()
-        隱蔽 = input("  隱蔽行動？(y/N) > ").strip().lower() in ("y", "yes")
-        return {"行動": act, "目標": 目標, "方式": 方式, "隱蔽": 隱蔽}
+        隱蔽 = input("  隱蔽？想瞞過敵人(潛行/暗號/偷偷拔刀)才選 y (y/N) > ").strip().lower() in ("y", "yes")
+        return {"行動": act, "目標": 目標, "隱蔽": 隱蔽}
 
 
 def ask_reaction(s, incoming: str):

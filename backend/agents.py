@@ -65,7 +65,7 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 - 想隱蔽地行動（使眼色、暗號）就把「隱蔽」設為 true。
 
 只輸出 JSON：
-{{"行動":"攻擊/說服/後撤/移動/對話/按兵不動/...","目標":"player或aqing或scar或null","方式":"具體怎麼做，貼著你的口吻","隱蔽":false}}"""
+{{"行動":"一句話：你想做什麼（含具體做法），貼著你的口吻","目標":"player或aqing或scar或null","隱蔽":false}}"""
     out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=400)
     out.actor = cid
     return out
@@ -106,8 +106,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
     actor_name = actor.名 if actor else intent.actor
     intent_txt = f"{actor_name} 想：{intent.行動}" \
                  + (f" → 目標 {intent.目標}" if intent.目標 else "") \
-                 + (f"；方式：{intent.方式}" if intent.方式 else "") \
-                 + ("；（試圖隱蔽）" if intent.隱蔽 else "")
+                 + ("；（試圖隱蔽，想瞞過敵人）" if intent.隱蔽 else "")
     react_txt = "（無人反應 / 突襲 / 對失能者）"
     if reaction:
         rn = s.角色卡.get(reaction.actor)

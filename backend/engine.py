@@ -75,8 +75,7 @@ def is_contested(s: Session, intent, reaction_target: Optional[str]) -> bool:
     """軸 B：是否爭議（擲運氣）？被主動對抗 或 環境本身是賭注。"""
     if reaction_target:
         return True
-    blob = (intent.行動 or "") + (intent.方式 or "")
-    return any(k in blob for k in RISKY_KW)
+    return any(k in (intent.行動 or "") for k in RISKY_KW)
 
 
 def roll_luck() -> str:

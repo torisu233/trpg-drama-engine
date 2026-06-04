@@ -36,8 +36,8 @@ function render(s) {
     box.innerHTML = `
       <div class="panel">
         <strong>輪到你行動（第 ${s.回合數} 拍）</strong>
-        <label>行動</label>
-        <input id="act" placeholder="攻擊 / 說服 / 後撤 / 對話 / 移動 / 按兵不動…">
+        <label>你想做什麼（一句話，含具體做法）</label>
+        <textarea id="act" rows="2" placeholder="例：掀翻桌子撞向刀疤 / 抄起油燈逼近他 / 繞到他背後貼牆摸近"></textarea>
         <div class="row">
           <div><label>目標</label>
             <select id="tgt">
@@ -45,11 +45,9 @@ function render(s) {
               <option value="scar">刀疤(敵)</option>
               <option value="aqing">阿青(隊友)</option>
             </select></div>
-          <div><label>隱蔽？</label>
-            <select id="hide"><option value="false">否</option><option value="true">是（暗號/使眼色）</option></select></div>
+          <div><label>隱蔽？（想瞞過敵人才選）</label>
+            <select id="hide"><option value="false">否</option><option value="true">是（潛行/暗號/偷偷拔刀）</option></select></div>
         </div>
-        <label>方式（具體怎麼做）</label>
-        <textarea id="way" rows="2" placeholder="例：掀翻桌子撞向刀疤 / 拿油燈逼近他 / 低聲讓阿青繞到他背後"></textarea>
         <button onclick="sendAction()">行動</button>
       </div>`;
   } else if (p.type === "player_reaction") {
@@ -72,7 +70,6 @@ async function sendAction(){
   const action = {
     行動: val("act") || "按兵不動",
     目標: val("tgt") || null,
-    方式: val("way"),
     隱蔽: val("hide") === "true",
   };
   document.getElementById("input").innerHTML = `<p class="muted">裁決中…</p>`;

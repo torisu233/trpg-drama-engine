@@ -105,10 +105,9 @@ class Session(BaseModel):
 class Intent(BaseModel):
     """角色／玩家的行動意圖（只說想做什麼，不宣告成敗）。"""
     actor: str = ""
-    行動: str                          # 攻擊/說服/後撤/移動/對話/...
+    行動: str                          # 一句話：想做什麼（含具體做法）
     目標: Optional[str] = None         # char_id 或 None
-    方式: str = ""
-    隱蔽: bool = False                 # 想隱蔽（表象/真意由裁決拆）
+    隱蔽: bool = False                 # 想瞞過敵人（表象/真意由裁決拆）
 
 
 class Reaction(BaseModel):

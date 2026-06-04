@@ -13,7 +13,7 @@ from .engine import PLAYER
 
 def _incoming_desc(s: Session, intent: Intent) -> str:
     name = s.角色卡[intent.actor].名
-    return f"{name} {intent.行動}" + (f"：{intent.方式}" if intent.方式 else "")
+    return f"{name}：{intent.行動}"
 
 
 async def _maybe_compress(grok: GrokClient, s: Session) -> None:

@@ -39,7 +39,7 @@ def t_fog():
 def t_two_axis():
     s = new_tavern_session()
     # 攻擊清醒的敵人 → 收反應 + 爭議
-    atk = Intent(actor="player", 行動="攻擊", 目標="scar", 方式="掀桌撞他")
+    atk = Intent(actor="player", 行動="掀桌撞他、全力攻擊", 目標="scar")
     assert engine.needs_reaction(s, atk) == "scar", "攻擊清醒敵人應收反應"
     assert engine.is_contested(s, atk, "scar") is True, "攻擊應為爭議"
 
@@ -48,12 +48,12 @@ def t_two_axis():
     assert engine.needs_reaction(s, atk) is None, "被綁者無法反應，不應收反應"
 
     # 無對象後撤 → 不收反應、非爭議
-    retreat = Intent(actor="player", 行動="後撤", 目標=None, 方式="退兩步")
+    retreat = Intent(actor="player", 行動="後撤退兩步", 目標=None)
     assert engine.needs_reaction(s, retreat) is None
     assert engine.is_contested(s, retreat, None) is False, "平靜後撤非爭議"
 
     # 環境賭注（無對手仍爭議）
-    leap = Intent(actor="player", 行動="跳過裂縫", 目標=None, 方式="助跑起跳")
+    leap = Intent(actor="player", 行動="助跑跳過裂縫", 目標=None)
     assert engine.is_contested(s, leap, None) is True, "跳躍應為環境爭議"
     print("[兩軸] 反應收集 / 爭議判定 全部符合預期  ✓")
 
