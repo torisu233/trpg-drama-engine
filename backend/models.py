@@ -102,6 +102,16 @@ class Session(BaseModel):
     結束: Optional[str] = None                                # 結束原因
 
 
+class Scenario(BaseModel):
+    """劇本＝Session 的靜態/初始部分（去掉執行期欄位）。可序列化存 JSON。
+    欄位給預設值，讓編劇過程中的「半成品」也能驗證通過。"""
+    id: str = "scenario"
+    世界觀: World = Field(default_factory=World)
+    scene: Scene = Field(default_factory=lambda: Scene(id="scene"))
+    角色卡: Dict[str, CharCard] = Field(default_factory=dict)
+    會變層: Ledger = Field(default_factory=Ledger)
+
+
 # ───────────────── LLM I/O ─────────────────
 class Intent(BaseModel):
     """角色／玩家的行動意圖（只說想做什麼，不宣告成敗）。"""

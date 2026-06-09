@@ -146,6 +146,27 @@ def t_consolidate():
     asyncio.run(_t_consolidate())
 
 
+def t_scenario():
+    import json as _json
+    from .models import Scenario
+    from . import scenario as scen
+    s0 = new_tavern_session()
+    sc = scen.scenario_from_session(s0, "tavern")
+    # JSON 來回不掉資料
+    sc2 = Scenario(**_json.loads(sc.model_dump_json()))
+    s1 = scen.session_from_scenario(sc2)
+    assert "怕火" in "".join(s1.角色卡["scar"].弱點), "角色卡弱點(怕火)應保留"
+    assert s1.角色卡["aqing"].性別 == "男", "性別應保留"
+    assert any("等同夥" in c.內容 for c in s1.會變層.場景.場景事實), "gm 秘密應保留"
+    assert s1.會變層.角色["player"].行動速度 == config.SPEED_PLAYER, "行動速度應保留"
+    assert s1.世界觀.法則, "世界觀法則應保留"
+    # session 執行期欄位正確初始化
+    assert s1.回合數 == 0 and s1.pending is None
+    assert set(s1.記憶.keys()) == set(s1.scene.在場), "記憶鍵=在場名單"
+    assert any("開場" in line for line in s1.公開日誌), "公開日誌含開場"
+    print("[劇本] Scenario 存取/轉換來回無損，session 初始化正確  ✓")
+
+
 if __name__ == "__main__":
     t_action_bar()
     t_fog()
@@ -155,4 +176,5 @@ if __name__ == "__main__":
     t_compress()
     t_gender()
     t_consolidate()
-    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta/TTL/摘要/性別/整理）")
+    t_scenario()
+    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta/TTL/摘要/性別/整理/劇本）")
