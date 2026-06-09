@@ -111,6 +111,41 @@ def t_compress():
     asyncio.run(_t_compress())
 
 
+def t_gender():
+    s = new_tavern_session()
+    view = engine.build_view(s, "scar")          # 刀疤看阿青
+    assert "阿青（我方，男）" in view, f"對手視圖應含性別: {view}"
+    assert "男" in engine.ground_truth(s), "地面真相應含性別"
+    print("[角色資訊] 性別已注入視圖/地面真相，對手看得到  ✓")
+
+
+async def _t_consolidate():
+    s = new_tavern_session()
+    # 5 條公開持久近義 + 1 gm；身心狀況放 1 條 TTL 瞬態
+    s.會變層.場景.社會事實 = [Condition(內容=f"刀疤要求先還債#{i}", 可見性="public") for i in range(5)]
+    s.會變層.場景.社會事實.append(Condition(內容="刀疤在等同夥", 可見性="gm"))
+    s.會變層.角色["player"].身心狀況 = [Condition(內容="瞬態暈眩", 可見性="public", 剩餘拍數=2)]
+
+    async def fake(grok, sess, label, conds):
+        return [Condition(內容="刀疤要求先清漕幫債務（合併）", 可見性="public", 來源="整理")]
+    orig, agents.consolidate_conditions = agents.consolidate_conditions, fake
+    try:
+        await flow._maybe_consolidate(None, s)
+    finally:
+        agents.consolidate_conditions = orig
+
+    社 = [c.內容 for c in s.會變層.場景.社會事實]
+    assert "刀疤要求先清漕幫債務（合併）" in 社, "公開持久近義應被合併"
+    assert "刀疤在等同夥" in 社, "gm 條目不可被整理動到"
+    assert len(s.會變層.場景.社會事實) == 2, f"6→2（合併1+保留gm1）：實得 {len(社)}"
+    assert len(s.會變層.角色["player"].身心狀況) == 1, "帶 TTL 的瞬態不應被整理"
+    print(f"[帳本整理] 社會事實 6→{len(社)}（公開持久合併、gm/瞬態保留）  ✓")
+
+
+def t_consolidate():
+    asyncio.run(_t_consolidate())
+
+
 if __name__ == "__main__":
     t_action_bar()
     t_fog()
@@ -118,4 +153,6 @@ if __name__ == "__main__":
     t_delta()
     t_expire()
     t_compress()
-    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta/TTL/摘要）")
+    t_gender()
+    t_consolidate()
+    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta/TTL/摘要/性別/整理）")

@@ -16,6 +16,30 @@ def _incoming_desc(s: Session, intent: Intent) -> str:
     return f"{name}：{intent.行動}"
 
 
+async def _consolidate_if(grok: GrokClient, s: Session, label: str, conds: list) -> list:
+    """只整理「公開且持久」的條目；gm/self/faction/帶 TTL 的瞬態一律保留不動。"""
+    mergeable, keep = [], []
+    for c in conds:
+        if c.剩餘拍數 is None and c.可見性 == "public":
+            mergeable.append(c)
+        else:
+            keep.append(c)
+    if len(mergeable) < config.CONSOLIDATE_THRESHOLD:
+        return conds
+    merged = await agents.consolidate_conditions(grok, s, label, mergeable)
+    return keep + merged
+
+
+async def _maybe_consolidate(grok: GrokClient, s: Session) -> None:
+    """帳本整理 pass：合併近義條目、清冗餘，根治重複累積。"""
+    sc = s.會變層.場景
+    sc.社會事實 = await _consolidate_if(grok, s, "社會事實/承諾/情報", sc.社會事實)
+    sc.場景事實 = await _consolidate_if(grok, s, "場景事實", sc.場景事實)
+    sc.空間關係 = await _consolidate_if(grok, s, "空間關係", sc.空間關係)
+    for cid, cl in s.會變層.角色.items():
+        cl.身心狀況 = await _consolidate_if(grok, s, f"{s.角色卡[cid].名} 身心狀況", cl.身心狀況)
+
+
 async def _maybe_compress(grok: GrokClient, s: Session) -> None:
     """滾動摘要：某 AI 角色記憶達 2W 時，把最舊 W 條摺進摘要。"""
     W = config.KEEP_RECENT
@@ -41,8 +65,9 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent: Intent,
     engine.distribute(s, narr.公開, narr.私密)
     engine.consume_turn(s, actor)
     s.回合數 += 1
-    engine.expire_transients(s)          # B. 帳本清理：瞬態 TTL 過期
-    await _maybe_compress(grok, s)        # A. 滾動摘要
+    engine.expire_transients(s)          # 帳本清理：瞬態 TTL 過期
+    await _maybe_consolidate(grok, s)     # 帳本整理：合併近義、清冗餘
+    await _maybe_compress(grok, s)        # 滾動摘要
 
 
 async def advance(grok: GrokClient, s: Session) -> None:

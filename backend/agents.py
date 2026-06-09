@@ -7,8 +7,18 @@
 """
 from typing import Optional
 from .grok_client import GrokClient
-from .models import Session, Intent, Reaction, Adjudication, Narration, Summary
+from .models import (
+    Session, Intent, Reaction, Adjudication, Narration, Summary,
+    Condition, ConsolidateOut,
+)
 from . import engine, config
+
+
+def _roster(s: Session) -> str:
+    """在場角色名冊（含性別，供裁決/敘事正確歸屬、避免腦補）。"""
+    return "、".join(
+        f"{cid}={s.角色卡[cid].名}" + (f"（{s.角色卡[cid].性別}）" if s.角色卡[cid].性別 else "")
+        for cid in s.scene.在場)
 
 
 def _world_brief(s: Session) -> str:
@@ -39,7 +49,7 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 {_world_brief(s)}
 
 # 你是誰
-陣營：{card.陣營}
+陣營：{card.陣營}　性別：{card.性別 or "未定"}
 身分：{card.身分背景}
 性格：{"、".join(card.性格)}
 說話風格：{card.說話風格}
@@ -76,7 +86,8 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: str) -> Reaction:
     card = s.角色卡[cid]
     view = engine.build_view(s, cid)
-    prompt = f"""你在跑團遊戲裡扮演「{card.名}」（{card.陣營}）。
+    性別txt = f"，{card.性別}" if card.性別 else ""
+    prompt = f"""你在跑團遊戲裡扮演「{card.名}」（{card.陣營}{性別txt}）。
 性格：{"、".join(card.性格)}；說話風格：{card.說話風格}；本事：{"、".join(card.能力)}；慣用手段：{"、".join(card.行為偏好)}。
 
 # 世界觀
@@ -113,7 +124,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
         rn = s.角色卡.get(reaction.actor)
         react_txt = f"{rn.名 if rn else reaction.actor} 回應：{reaction.反應}"
     luck_txt = luck or "（非爭議，不擲運氣）"
-    在場 = "、".join(f"{cid}={s.角色卡[cid].名}" for cid in s.scene.在場)
+    在場 = _roster(s)
 
     prompt = f"""你是跑團遊戲裡**中立的裁決者**。不偏袒任何一方，只依「地面真相」與「世界觀法則」裁決。
 
@@ -188,7 +199,7 @@ def _vis_label(v: str) -> str:
 
 async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Intent,
                   reaction: Optional[Reaction] = None) -> Narration:
-    在場 = "、".join(f"{cid}={s.角色卡[cid].名}" for cid in s.scene.在場)
+    在場 = _roster(s)
     分發 = "\n".join(f"- {cid}（{s.角色卡[cid].名}）：{lvl}"
                      for cid, lvl in adj.感知分發.items()) or "- 全體：全部"
 
@@ -274,3 +285,25 @@ async def summarize_memory(grok: GrokClient, s: Session, cid: str,
 只輸出 JSON：{{"摘要":"..."}}"""
     out = await grok.call(prompt, Summary, temperature=0.4, max_tokens=400)
     return out.摘要
+
+
+# ───────────────── 帳本整理：合併近義條目、清冗餘（不改變事實） ─────────────────
+async def consolidate_conditions(grok: GrokClient, s: Session, label: str,
+                                 conds: list) -> list:
+    """把一份條目清單裡描述同一件事的近義條目合併成單一條目。回傳整理後的 Condition 清單。"""
+    lines = "\n".join(f"- {c.內容}｜gates:{c.gates}｜{c.可見性}" for c in conds)
+    prompt = f"""你在整理跑團遊戲的狀態帳本「{label}」，移除冗餘，但**不改變事實**。
+
+下列條目可能有多條描述同一件事的近義條目（例如反覆出現「先還債再談」）。請：
+- 把描述同一件事的近義條目**合併成單一精簡條目**；
+- 移除已被取代或互相矛盾的舊條目；
+- 保留彼此**真正不同**的事實，別把不同的事壓成一條；
+- 保留每條的 gates 與可見性；**不要新增**原本沒有的事實。
+
+目前清單：
+{lines}
+
+只輸出 JSON：{{"conditions":[{{"內容":"精簡事實","gates":"如何約束後續","可見性":"public"}}]}}"""
+    out = await grok.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=900)
+    return [Condition(內容=c.內容, gates=c.gates, 可見性=c.可見性, 來源="整理")
+            for c in out.conditions]

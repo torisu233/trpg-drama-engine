@@ -127,7 +127,8 @@ def build_view(s: Session, viewer: str) -> str:
             continue
         card = s.角色卡[cid]
         who = "你" if cid == viewer else card.名
-        seg = [f"{who}（{card.陣營}）：{cl.姿勢位置 or '在場'}"]
+        g = f"，{card.性別}" if card.性別 else ""
+        seg = [f"{who}（{card.陣營}{g}）：{cl.姿勢位置 or '在場'}"]
         body = _fmt_conds(cl.身心狀況, viewer, faction) + _fmt_conds(cl.特殊情況, viewer, faction)
         if cid == viewer:                    # 自己能看到自己的隨身與物品
             body += _fmt_conds(cl.隨身, viewer, faction)
@@ -154,7 +155,8 @@ def ground_truth(s: Session) -> str:
         lines.append(f"- {c.內容}{g}{tag}")
     for cid, cl in s.會變層.角色.items():
         card = s.角色卡[cid]
-        lines.append(f"◆ {card.名}[{cid}]（{card.陣營}）速度{cl.行動速度} 感知:{cl.感知能力}")
+        g = f"/{card.性別}" if card.性別 else ""
+        lines.append(f"◆ {card.名}[{cid}]（{card.陣營}{g}）速度{cl.行動速度} 感知:{cl.感知能力}")
         if card.能力:
             lines.append(f"  能力：{'、'.join(card.能力)}")
         if card.防禦特性:

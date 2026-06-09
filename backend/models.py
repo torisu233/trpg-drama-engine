@@ -44,6 +44,7 @@ class CharCard(BaseModel):
     名: str
     陣營: str                              # 我方 / 敵 / 中立
     扮演: str = "agent"                    # "玩家" | "agent"
+    性別: str = ""                         # 可被對手觀察的基本資訊（列入視圖/名冊，防腦補）
     # ── 演戲用（角色 agent 與本人讀；對手看不到）──
     身分背景: str = ""                      # 出身、來歷、職業
     性格: List[str] = Field(default_factory=list)
@@ -155,3 +156,13 @@ class Narration(BaseModel):
 
 class Summary(BaseModel):
     摘要: str
+
+
+class CleanCond(BaseModel):
+    內容: str
+    gates: str = ""
+    可見性: str = "public"
+
+
+class ConsolidateOut(BaseModel):
+    conditions: List[CleanCond] = Field(default_factory=list)
