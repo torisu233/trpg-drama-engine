@@ -17,7 +17,7 @@ export const useGameStore = defineStore('game', {
     async act(action) {
       this.busy = true
       try {
-        this.snap = await api.action(this.snap.game_id, action)
+        await api.actionStream(this.snap.game_id, action, (snap) => { this.snap = snap })  // 逐拍更新
       } finally {
         this.busy = false
       }
@@ -25,10 +25,14 @@ export const useGameStore = defineStore('game', {
     async react(reaction) {
       this.busy = true
       try {
-        this.snap = await api.react(this.snap.game_id, reaction)
+        await api.reactStream(this.snap.game_id, reaction, (snap) => { this.snap = snap })
       } finally {
         this.busy = false
       }
+    },
+    async remove(gid) {
+      await api.delGame(gid)
+      await this.refreshGames()
     },
   },
 })

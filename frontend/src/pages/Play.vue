@@ -7,6 +7,15 @@
 
     <div v-if="!snap" class="muted">載入中…</div>
     <template v-else>
+      <div class="panel" v-if="snap.行動條 && snap.行動條.length">
+        <div class="card-title">行動順序（越上面越快輪到）</div>
+        <div v-for="b in snap.行動條" :key="b.id" class="barrow">
+          <span class="bname">{{ b.名 }}<span class="muted">（{{ b.陣營 }}）</span></span>
+          <div class="bar"><div class="fill" :class="{ ready: b.行動值 >= b.門檻 }" :style="{ width: pct(b) + '%' }"></div></div>
+          <span class="bnum muted">{{ b.行動值 }}/{{ b.門檻 }}<template v-if="b.預估拍 <= 0"> · 可行動</template><template v-else> · {{ b.預估拍 }} 拍後</template></span>
+        </div>
+      </div>
+
       <div class="log">
         <div v-for="(line, i) in snap.公開日誌" :key="i"
              class="turn" :class="{ sys: line.startsWith('【') }">{{ line }}</div>
@@ -78,6 +87,8 @@ const targets = computed(() => (g.snap?.在場 || []).filter((c) => c.id !== 'pl
 
 const act = ref({ 行動: '', 目標: '', 隱蔽: false })
 const reaction = ref('')
+
+function pct(b) { return Math.min(100, Math.round((b.行動值 / b.門檻) * 100)) }
 
 onMounted(async () => {
   const gid = route.params.gid

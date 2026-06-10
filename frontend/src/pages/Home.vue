@@ -12,6 +12,7 @@
           <button @click="play(id)" :disabled="!!starting">
             {{ starting === id ? '載入中…' : '遊玩' }}
           </button>
+          <button class="mini" @click="delScenario(id)">刪除</button>
         </div>
       </div>
       <div v-if="!s.list.length" class="muted">（還沒有劇本，點「新建劇本」開始）</div>
@@ -22,7 +23,10 @@
       <div class="card" v-for="g in game.games" :key="g.game_id">
         <div class="card-title">{{ g.地點 || g.game_id }}</div>
         <div class="muted">第 {{ g.回合數 }} 拍{{ g.結束 ? ' · 已結束' : '' }}</div>
-        <div class="card-actions"><router-link :to="'/play/' + g.game_id">續玩</router-link></div>
+        <div class="card-actions">
+          <router-link :to="'/play/' + g.game_id">續玩</router-link>
+          <button class="mini" @click="delGame(g.game_id)">刪除</button>
+        </div>
       </div>
       <div v-if="!game.games.length" class="muted">（無）</div>
     </div>
@@ -54,5 +58,14 @@ async function play(id) {
   } finally {
     starting.value = ''
   }
+}
+
+async function delScenario(id) {
+  if (!confirm(`刪除劇本「${id}」？`)) return
+  try { await s.remove(id) } catch (e) { alert('刪除失敗：' + e.message) }
+}
+async function delGame(gid) {
+  if (!confirm('刪除這局遊戲紀錄？')) return
+  try { await game.remove(gid) } catch (e) { alert('刪除失敗：' + e.message) }
 }
 </script>

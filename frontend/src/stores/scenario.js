@@ -55,5 +55,9 @@ export const useScenarioStore = defineStore('scenario', {
       await api.saveScenario(id, this.draft)
       await this.refreshList()
     },
+    async remove(id) {
+      await api.delScenario(id)
+      await this.refreshList()
+    },
   },
 })
