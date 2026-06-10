@@ -39,11 +39,19 @@ python -m venv .venv
 
 ## 跑起來
 
-**API 伺服器**（Vue 前端將跨域呼叫它）
+**1) API 伺服器**（終端機 A）
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8100
 # Swagger 文件：http://127.0.0.1:8100/docs
 ```
+
+**2) 前端 Vue dev server**（終端機 B）
+```powershell
+cd frontend
+npm install        # 首次
+npm run dev        # http://localhost:5173 （/api 自動代理到 8100）
+```
+兩個都跑著，瀏覽器開 **http://localhost:5173**：劇本集 → 新建/編輯（聊天+面板）→ 遊玩。
 
 **命令行工具**（免前端即可玩/編）
 ```powershell
@@ -83,5 +91,6 @@ snapshot = `{game_id, 回合數, 結束, pending, 公開日誌, 玩家視圖, �
 - [x] 核心戲劇引擎（行動條/兩軸/裁決/敘事/迷霧/摘要/整理）
 - [x] 劇本資料層 + 編劇 agent + CLI
 - [x] 後端 API 化（編劇無狀態 / 遊玩有狀態 + JSON 存檔）
-- [ ] **Vue 3 前端**：劇本清單 / 編劇頁（聊天+面板綁草稿）/ 遊玩頁
+- [x] **Vue 3 前端**：劇本集 / 編劇頁（聊天+面板綁草稿）/ 遊玩頁
+- [ ] 編劇頁面板的細部手動編輯（目前手動可改基調/背景/地點/鉤子，其餘靠對話）
 - [ ] 串流逐拍顯示、批次敘事（敘事品質增強）

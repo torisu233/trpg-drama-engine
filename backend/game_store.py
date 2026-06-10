@@ -68,6 +68,8 @@ def snapshot(gid: str, s: Session) -> dict:
         "結束": s.結束,
         "pending": s.pending,
         "公開日誌": s.公開日誌,
+        "在場": [{"id": cid, "名": s.角色卡[cid].名, "陣營": s.角色卡[cid].陣營}
+                 for cid in s.scene.在場 if cid in s.角色卡],
         "玩家視圖": engine.build_view(s, "player"),
         "帳本除錯": engine.ground_truth(s),
     }

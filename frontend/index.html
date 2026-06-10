@@ -1,51 +1,12 @@
 <!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>跑團原型 · 雨夜酒館</title>
-<style>
-  body { font-family: system-ui, "Microsoft JhengHei", sans-serif; margin: 0;
-         background:#1a1814; color:#e8e2d4; }
-  .wrap { max-width: 820px; margin: 0 auto; padding: 16px; }
-  h1 { font-size: 18px; color:#d8b878; }
-  #log { background:#22201a; border:1px solid #3a3528; border-radius:8px;
-         padding:14px; min-height:200px; white-space:pre-wrap; line-height:1.7; }
-  .turn { border-bottom:1px dashed #3a3528; padding:6px 0; }
-  .sys { color:#8a8270; }
-  .threat { background:#3a2420; border:1px solid #7a4030; border-radius:8px;
-            padding:10px; margin:10px 0; color:#f0c0a0; }
-  .panel { background:#22201a; border:1px solid #3a3528; border-radius:8px;
-           padding:12px; margin-top:12px; }
-  label { display:block; font-size:13px; color:#b8b09a; margin:6px 0 2px; }
-  input, select, textarea { width:100%; box-sizing:border-box; background:#15130f;
-           color:#e8e2d4; border:1px solid #44402f; border-radius:6px; padding:8px; }
-  button { background:#6a5a2a; color:#fff; border:0; border-radius:6px;
-           padding:10px 16px; cursor:pointer; margin-top:10px; font-size:14px; }
-  button:hover { background:#7d6a32; }
-  details { margin-top:12px; } summary { cursor:pointer; color:#8a8270; }
-  pre { white-space:pre-wrap; font-size:12px; color:#9a9280; }
-  .row { display:flex; gap:8px; } .row > * { flex:1; }
-  .muted{color:#8a8270;font-size:12px;}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>跑團工作室</title>
 </head>
 <body>
-<div class="wrap">
-  <h1>跑團原型 · 雨夜酒館</h1>
-  <p class="muted">玩家＋阿青(隊友)＋刀疤(敵)。你輸入想做什麼，AI 裁決與敘事。</p>
-  <div id="log">點「開始」載入場景。</div>
-  <div id="input"></div>
-  <button id="startBtn" onclick="start()">開始 / 重新開始</button>
-
-  <details>
-    <summary>玩家視圖（你感知到的局面）</summary>
-    <pre id="view"></pre>
-  </details>
-  <details>
-    <summary>🔧 帳本除錯（含 gm 秘密，開發用）</summary>
-    <pre id="debug"></pre>
-  </details>
-</div>
-<script src="app.js"></script>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>
