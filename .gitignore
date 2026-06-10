@@ -14,3 +14,6 @@ data/
 # 編輯器
 .vscode/
 .idea/
+
+# 機器專屬：ngrok 固定網域設定（publish-ngrok.ps1 記住用）
+.ngrok-domain.txt

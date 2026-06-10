@@ -4,5 +4,3 @@ pydantic>=2.5.0
 python-dotenv>=1.0.0
 openai>=1.40.0
 instructor>=1.4.0
-# 工具：繁→简一键转换脚本 to_simplified.py（非运行期依赖）
-opencc>=1.1.0

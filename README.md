@@ -74,6 +74,28 @@ npm run dev        # http://localhost:5173 （/api 自动代理到 8100）
 - **你的机器要开着**（隧道指向本机）；关机/Ctrl+C 就断。
 - 公开时**务必有密码**（`publish.ps1` 会强制）——否则任何人都能烧你的 Grok 密钥。
 - 对方游玩的 Grok 调用都算**你的帐上**。
+- Cloudflare 快速隧道**每次网址都不同**（随机、拋弃式）；要固定网址见下。
+
+## 固定网址分享（ngrok，每次同一网址）
+
+Cloudflare 快速隧道每次随机；想要**每次发布都同一个网址**（方便长期分享），用 ngrok 免费固定子网域。
+
+一次性设置：
+1. 到 https://ngrok.com 注册免费帐号，复制 authtoken
+2. 安装：`winget install ngrok.ngrok`
+3. 存 token：`ngrok config add-authtoken <你的TOKEN>`
+4. 到 https://dashboard.ngrok.com/domains 保留一个免费网域（形如 `your-name.ngrok-free.app`）
+
+之后每次发布：
+```powershell
+.\publish-ngrok.ps1
+```
+首次会问**访问密码**与**保留的网域**（记进 `.ngrok-domain.txt`，之后不必再输）→ 重建前端、起后端、用固定网址开隧道。
+网址永远是 `https://your-name.ngrok-free.app`。`Ctrl+C` 结束。
+
+注意：
+- 同样**机器要开着、务必有密码**（脚本强制）。
+- ngrok 免费版首次开网页会有一次「Visit Site」警告页，点一下即可（API 的 fetch 请求不受影响）。
 
 ## API
 
