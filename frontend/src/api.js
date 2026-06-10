@@ -1,5 +1,16 @@
-async function j(url, opts) {
-  const r = await fetch(url, opts)
+function withPw(opts = {}) {
+  return { ...opts, headers: { ...(opts.headers || {}), 'X-App-Password': localStorage.getItem('app_pw') || '' } }
+}
+
+async function j(url, opts = {}) {
+  let r = await fetch(url, withPw(opts))
+  if (r.status === 401) {
+    const pw = window.prompt('需要存取密碼：')
+    if (pw) {
+      localStorage.setItem('app_pw', pw)
+      r = await fetch(url, withPw(opts))   // 帶上新密碼重試一次
+    }
+  }
   if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status))
   return r.json()
 }

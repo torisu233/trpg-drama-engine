@@ -65,6 +65,20 @@ npm run dev        # http://localhost:5173 （/api 自動代理到 8100）
 .\.venv\Scripts\python.exe -m backend.api_smoke     # 離線 API（不打 grok）
 ```
 
+## 臨時分享到公網（Cloudflare 隧道，免註冊）
+
+把整個 app（前端＋API 已是同一個服務）用 Cloudflare 快速隧道公開，一鍵：
+```powershell
+.\publish.ps1
+```
+會問你設一個**存取密碼** → 自動建置前端、起後端、開隧道，印出 `https://xxxx.trycloudflare.com`。
+把**網址＋密碼**分享出去，對方開網址、輸入密碼即可玩。`Ctrl+C` 結束分享。
+
+注意：
+- **你的機器要開著**（隧道指向本機）；關機/Ctrl+C 就斷。
+- 公開時**務必有密碼**（`publish.ps1` 會強制）——否則任何人都能燒你的 Grok 金鑰。
+- 對方遊玩的 Grok 呼叫都算**你的帳上**。
+
 ## API
 
 **劇本／編劇（無狀態，前端持有草稿）**

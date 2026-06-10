@@ -32,3 +32,7 @@ TEMP_NARRATOR = 0.9           # 敘事要生動
 TEMP_CHARACTER = 0.85         # 角色要有個性
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# ── 公開存取密碼閘 ──
+# 設了才啟用：/api/* 須帶 header X-App-Password 比對。公開（隧道/上雲）時務必設！
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
