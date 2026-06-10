@@ -43,19 +43,47 @@ def scenario_from_session(s: Session, sid: str) -> Scenario:
     )
 
 
+def _nonempty(v) -> bool:
+    return v not in (None, "", [], {})
+
+
+def _merge_fields(existing, new, fields) -> None:
+    """逐欄合併：agent 回傳空欄視為「不更動」，保留既有值（避免誤清空）。"""
+    for f in fields:
+        nv = getattr(new, f, None)
+        if _nonempty(nv):
+            setattr(existing, f, nv)
+
+
+_CARD_FIELDS = ["名", "陣營", "扮演", "性別", "身分背景", "性格", "說話風格",
+                "動機目標", "行為偏好", "能力", "防禦特性", "弱點"]
+
+
 def apply_author_reply(sc: Scenario, rep) -> str:
-    """把編劇 agent 的區塊更新套進劇本正本。回傳實際更新的區塊名。"""
+    """把編劇 agent 的區塊更新「合併」進劇本正本（空欄＝不更動）。回傳更新的區塊名。"""
     區 = rep.區塊
     if 區 == "world" and rep.world:
-        sc.世界觀 = rep.world
+        _merge_fields(sc.世界觀, rep.world, ["基調", "背景", "法則"])
     elif 區 == "scene" and rep.scene:
-        sc.scene = rep.scene
+        _merge_fields(sc.scene, rep.scene, ["id", "地點", "鉤子", "在場"])
     elif 區 == "char" and rep.char and rep.char_id:
-        sc.角色卡[rep.char_id] = rep.char
-        if rep.char_id not in sc.scene.在場:        # 新角色預設加入在場
-            sc.scene.在場.append(rep.char_id)
+        cid = rep.char_id
+        if cid in sc.角色卡:
+            _merge_fields(sc.角色卡[cid], rep.char, _CARD_FIELDS)
+        else:
+            sc.角色卡[cid] = rep.char
+        if cid not in sc.scene.在場:
+            sc.scene.在場.append(cid)
     elif 區 == "ledger" and rep.ledger:
-        sc.會變層 = rep.ledger
+        L = sc.會變層
+        for cid, cl in rep.ledger.角色.items():       # key 級合併：保留未提及的角色
+            L.角色[cid] = cl
+        for f in ["空間關係", "場景事實", "社會事實"]:   # 非空才替換
+            nv = getattr(rep.ledger.場景, f)
+            if _nonempty(nv):
+                setattr(L.場景, f, nv)
+        if _nonempty(rep.ledger.陣營私有):
+            L.陣營私有.update(rep.ledger.陣營私有)
     else:
         return "none"
     return 區

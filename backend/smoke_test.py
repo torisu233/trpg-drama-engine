@@ -167,6 +167,32 @@ def t_scenario():
     print("[劇本] Scenario 存取/轉換來回無損，session 初始化正確  ✓")
 
 
+def t_author_merge():
+    from .models import Scenario, AuthorReply, World, CharCard, Ledger, CharLedger
+    from . import scenario as scen
+    sc = Scenario(
+        id="t",
+        世界觀=World(基調="武俠", 背景="邊城", 法則=["法則A"]),
+        角色卡={"scar": CharCard(名="刀疤", 陣營="敵", 能力=["快刀"], 弱點=["怕火"])},
+    )
+    # 改 world：只加法則，基調/背景留空 → 不該被清
+    scen.apply_author_reply(sc, AuthorReply(reply="", 區塊="world",
+        world=World(基調="", 背景="", 法則=["法則A", "法則B"])))
+    assert sc.世界觀.基調 == "武俠" and sc.世界觀.背景 == "邊城", "空欄不該清掉既有"
+    assert sc.世界觀.法則 == ["法則A", "法則B"]
+    # 改 char：只改弱點，能力留空 → 能力不該被清
+    scen.apply_author_reply(sc, AuthorReply(reply="", 區塊="char", char_id="scar",
+        char=CharCard(名="刀疤", 陣營="敵", 弱點=["怕火", "怕水"])))
+    assert sc.角色卡["scar"].能力 == ["快刀"], "char 其他欄不該被清"
+    assert sc.角色卡["scar"].弱點 == ["怕火", "怕水"]
+    # ledger：新增 player 局面，不該清掉既有 scar 局面
+    sc.會變層.角色["scar"] = CharLedger(姿勢位置="門口")
+    scen.apply_author_reply(sc, AuthorReply(reply="", 區塊="ledger",
+        ledger=Ledger(角色={"player": CharLedger(姿勢位置="桌邊")})))
+    assert "scar" in sc.會變層.角色 and "player" in sc.會變層.角色, "ledger 角色應 key 級合併"
+    print("[編劇合併] 空欄不誤清、char 保留其他欄、ledger 角色 key 級保留  ✓")
+
+
 if __name__ == "__main__":
     t_action_bar()
     t_fog()
@@ -177,4 +203,5 @@ if __name__ == "__main__":
     t_gender()
     t_consolidate()
     t_scenario()
-    print("\n全部純邏輯煙霧測試通過 ✅（行動條/迷霧/兩軸/delta/TTL/摘要/性別/整理/劇本）")
+    t_author_merge()
+    print("\n全部純邏輯煙霧測試通過 ✅（…/劇本/編劇合併）")

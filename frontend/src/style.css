@@ -34,5 +34,11 @@ pre { white-space: pre-wrap; font-size: 12px; color: #b8b09a; }
 .log .sys { color: var(--muted); }
 .chat { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
 .chat .me { color: var(--ink); } .chat .ai { color: var(--gold); }
-.split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
 @media (max-width: 820px) { .split { grid-template-columns: 1fr; } }
+.mini { padding: 2px 9px; font-size: 12px; background: #3a3528; }
+.mini:hover { background: #4a4538; }
+.cond { border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; }
+.subcard { border-top: 1px dashed var(--line); padding: 8px 0; }
+details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; padding: 6px 0; }
+.field { margin-bottom: 6px; }
