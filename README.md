@@ -12,19 +12,18 @@ backend/
   grok_client.py  Grok（openai SDK + instructor，自動重問）
   engine.py     行動條 / 兩軸 / 迷霧 / delta / TTL / 帳本整理輔助
   agents.py     裁決 / 敘事 / 角色意圖+反應 / 摘要 / 整理 / 編劇
-  flow.py       推進迴圈 + 每拍維護（TTL/整理/摘要）
-  scene.py      手寫種子場景（酒館）
+  flow.py       開局推進 + 串流逐拍 + 每拍維護（TTL/整理/摘要）
   scenario.py   劇本存取（list/load/save）+ session 轉換 + 編劇套用
   ── API（FastAPI）──
   main.py       app 入口（純 API）
   deps.py       共用 Grok client
   game_store.py 遊戲場次 + JSON 存檔
   routes/       scenarios.py（CRUD+編劇）, game.py（遊玩）
-  ── CLI / 診斷 ──
-  play.py       命令行遊玩          author.py    命令行編劇
-  smoke_test.py 純邏輯回歸(10項)    api_smoke.py 離線 API 測試
-  trace_test.py 逐環節追蹤          stream_test  串流逐拍驗證
-  mode_test.py  非戰鬥模式驗證      live_*/author_test  端到端 live
+  ── 測試 / 診斷 ──
+  smoke_test.py  純邏輯回歸(10項)     api_smoke.py   離線 API（TestClient，自帶酒館 fixture）
+  stream_test.py 串流逐拍驗證(live)   mode_test.py   非戰鬥模式驗證(live)
+  author_test.py 編劇 agent 驗證(live)
+  scene.py       in-code 酒館 session（離線測試 fixture）
 scenarios/      劇本（編劇產物，版控）  *.json
 data/games/     遊戲存檔（執行期，gitignore）  *.json
 frontend/       Vue 3 SPA（Vite+Pinia+Router）：劇本集 / 編劇頁 / 遊玩頁
@@ -54,12 +53,7 @@ npm install        # 首次
 npm run dev        # http://localhost:5173 （/api 自動代理到 8100）
 ```
 兩個都跑著，瀏覽器開 **http://localhost:5173**：劇本集 → 新建/編輯（聊天+面板）→ 遊玩。
-
-**命令行工具**（免前端即可玩/編）
-```powershell
-.\.venv\Scripts\python.exe -m backend.play     # 玩（目前載入酒館）
-.\.venv\Scripts\python.exe -m backend.author   # 編劇：對話設計劇本，/save 存檔
-```
+（遊玩與編劇都只走前後端；已無命令行入口。）
 
 **測試**
 ```powershell

@@ -51,9 +51,10 @@ async def main():
     await flow.advance(grok, s)
     print(">> pending:", s.pending and s.pending.get("type"))
     print(">> 玩家交涉：先付一半訂金、事成再給，順帶暗示自己惹不起")
-    await flow.submit_player_action(grok, s, {
+    async for _ in flow.stream_action(grok, s, {
         "行動": "壓低聲音說只要一個地址，先付一半訂金、事成再給；順帶不著痕跡提一句自己惹不起",
-        "目標": "boss", "隱蔽": False})
+        "目標": "boss", "隱蔽": False}):
+        pass
 
     print("\n========== 公開日誌 ==========")
     for line in s.公開日誌:

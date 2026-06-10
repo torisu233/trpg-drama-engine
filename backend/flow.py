@@ -1,9 +1,9 @@
 """流程編排：逐拍推進 + 每拍維護（TTL/整理/摘要）。
 
-提供兩種驅動：
-- 非串流（CLI）：advance / submit_player_action / submit_player_reaction
-- 串流（Web）：stream_action / stream_reaction —— 每拍 yield 一次 session，供端點逐拍推給前端
-兩者共用 _resolve_beat / _advance_stream / 玩家拍 helper，邏輯單一不重複。
+驅動方式（皆服務 Web 前後端）：
+- advance：開局把場景推進到第一個玩家決策點（new_game 用，整段跑完不逐拍）
+- stream_action / stream_reaction：玩家行動/反應後，每拍 yield 一次 session，端點逐拍推前端
+共用 _resolve_beat / _advance_stream / 玩家拍 helper，邏輯單一不重複。
 """
 from .grok_client import GrokClient
 from .models import Session, Intent, Reaction
@@ -124,23 +124,14 @@ async def _advance_stream(grok: GrokClient, s: Session):
         yield s
 
 
-# ───────────────── 非串流（CLI） ─────────────────
+# ───────────────── 開局推進（new_game 用，非串流） ─────────────────
 async def advance(grok: GrokClient, s: Session) -> None:
+    """把場景推進到第一個玩家決策點（開局尚無逐拍 UI，整段跑完）。"""
     async for _ in _advance_stream(grok, s):
         pass
 
 
-async def submit_player_action(grok: GrokClient, s: Session, action: dict) -> None:
-    await _player_action_beat(grok, s, action)
-    await advance(grok, s)
-
-
-async def submit_player_reaction(grok: GrokClient, s: Session, reaction: dict) -> None:
-    await _player_reaction_beat(grok, s, reaction)
-    await advance(grok, s)
-
-
-# ───────────────── 串流（Web） ─────────────────
+# ───────────────── 串流（Web 遊玩主路徑） ─────────────────
 async def stream_action(grok: GrokClient, s: Session, action: dict):
     await _player_action_beat(grok, s, action)
     yield s
