@@ -3,11 +3,13 @@
 # Usage (run in PowerShell, NOT cmd):
 #   .\publish.ps1                 # prompts for an access password
 #   .\publish.ps1 -Password xxxx
+#   .\publish.ps1 -SkipBuild      # reuse existing dist (only if frontend unchanged)
 #
-# It sets the password gate, builds the frontend if needed, starts the backend
-# (serves frontend + /api on :8100), and opens a Cloudflare tunnel that prints a
-# public https URL. Share that URL + the password. Press Ctrl+C to stop.
-param([string]$Password)
+# It sets the password gate, REBUILDS the frontend (the served dist must match the
+# current source, else you ship a stale UI), starts the backend (serves frontend +
+# /api on :8100), and opens a Cloudflare tunnel that prints a public https URL.
+# Share that URL + the password. Press Ctrl+C to stop.
+param([string]$Password, [switch]$SkipBuild)
 
 $root = $PSScriptRoot
 
@@ -26,12 +28,18 @@ if (-not $cf) {
 }
 if (-not $cf) { Write-Host "cloudflared not found. Install: winget install Cloudflare.cloudflared" -ForegroundColor Red; exit 1 }
 
-# build frontend if dist missing
-if (-not (Test-Path "$root\frontend\dist\index.html")) {
-    Write-Host "Building frontend (one-time / after frontend changes)..." -ForegroundColor Cyan
+# build frontend (the served dist must match current source; rebuild every run)
+if ($SkipBuild -and (Test-Path "$root\frontend\dist\index.html")) {
+    Write-Host "Skipping frontend build (-SkipBuild); serving existing dist." -ForegroundColor DarkGray
+} else {
+    Write-Host "Building frontend so dist matches current source..." -ForegroundColor Cyan
     Push-Location "$root\frontend"
     npm run build
     Pop-Location
+    if (-not (Test-Path "$root\frontend\dist\index.html")) {
+        Write-Host "Frontend build failed (no dist\index.html). Run 'cd frontend; npm install' then retry." -ForegroundColor Red
+        exit 1
+    }
 }
 
 # start backend (child process inherits APP_PASSWORD)
