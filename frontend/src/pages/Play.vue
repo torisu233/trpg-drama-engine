@@ -7,13 +7,17 @@
 
     <div v-if="!snap" class="muted">載入中…</div>
     <template v-else>
-      <div class="panel" v-if="snap.行動條 && snap.行動條.length">
-        <div class="card-title">行動順序（越上面越快輪到）</div>
-        <div v-for="b in snap.行動條" :key="b.id" class="barrow">
-          <span class="bname">{{ b.名 }}<span class="muted">（{{ b.陣營 }}）</span></span>
-          <div class="bar"><div class="fill" :class="{ ready: b.行動值 >= b.門檻 }" :style="{ width: pct(b) + '%' }"></div></div>
-          <span class="bnum muted">{{ b.行動值 }}/{{ b.門檻 }}<template v-if="b.預估拍 <= 0"> · 可行動</template><template v-else> · {{ b.預估拍 }} 拍後</template></span>
-        </div>
+      <div class="actionstrip" v-if="snap.行動條 && snap.行動條.length">
+        <span class="strip-label muted">行動序</span>
+        <template v-for="(b, i) in snap.行動條" :key="b.id">
+          <span v-if="i > 0" class="chsep">›</span>
+          <span class="chip" :class="{ ready: b.行動值 >= b.門檻 }"
+                :title="b.陣營 + (b.預估拍 <= 0 ? ' · 可行動' : ' · ' + b.預估拍 + ' 拍後')">
+            {{ b.名 }}
+            <span class="cnum">{{ b.行動值 }}/{{ b.門檻 }}</span>
+            <span class="minibar"><span class="minifill" :style="{ width: pct(b) + '%' }"></span></span>
+          </span>
+        </template>
       </div>
 
       <div class="log">
