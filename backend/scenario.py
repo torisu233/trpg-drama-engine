@@ -43,6 +43,24 @@ def scenario_from_session(s: Session, sid: str) -> Scenario:
     )
 
 
+def apply_author_reply(sc: Scenario, rep) -> str:
+    """把編劇 agent 的區塊更新套進劇本正本。回傳實際更新的區塊名。"""
+    區 = rep.區塊
+    if 區 == "world" and rep.world:
+        sc.世界觀 = rep.world
+    elif 區 == "scene" and rep.scene:
+        sc.scene = rep.scene
+    elif 區 == "char" and rep.char and rep.char_id:
+        sc.角色卡[rep.char_id] = rep.char
+        if rep.char_id not in sc.scene.在場:        # 新角色預設加入在場
+            sc.scene.在場.append(rep.char_id)
+    elif 區 == "ledger" and rep.ledger:
+        sc.會變層 = rep.ledger
+    else:
+        return "none"
+    return 區
+
+
 def session_from_scenario(sc: Scenario) -> Session:
     """把 Scenario 包成全新可玩 Session（深拷貝靜態資料，初始化執行期欄位）。"""
     記憶 = {cid: [] for cid in sc.scene.在場}

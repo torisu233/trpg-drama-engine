@@ -176,3 +176,16 @@ class CleanCond(BaseModel):
 
 class ConsolidateOut(BaseModel):
     conditions: List[CleanCond] = Field(default_factory=list)
+
+
+class AuthorReply(BaseModel):
+    """編劇 agent 每回合輸出：一句回覆 + 至多一個「區塊更新」。"""
+    reply: str                                # 給使用者的話（提問/說明改了什麼）
+    區塊: str = "none"                         # world / scene / char / ledger / none(純提問)
+    char_id: Optional[str] = None             # 當 區塊=char 時，指明哪個角色
+    world: Optional[World] = None
+    scene: Optional[Scene] = None
+    char: Optional[CharCard] = None
+    ledger: Optional[Ledger] = None
+    missing: List[str] = Field(default_factory=list)   # 還缺/待決
+    done: bool = False                        # 是否已足夠完整可存檔

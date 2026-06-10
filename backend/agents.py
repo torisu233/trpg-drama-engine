@@ -9,7 +9,7 @@ from typing import Optional
 from .grok_client import GrokClient
 from .models import (
     Session, Intent, Reaction, Adjudication, Narration, Summary,
-    Condition, ConsolidateOut,
+    Condition, ConsolidateOut, Scenario, AuthorReply,
 )
 from . import engine, config
 
@@ -307,3 +307,82 @@ async def consolidate_conditions(grok: GrokClient, s: Session, label: str,
     out = await grok.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=900)
     return [Condition(內容=c.內容, gates=c.gates, 可見性=c.可見性, 來源="整理")
             for c in out.conditions]
+
+
+# ───────────────── 編劇 agent：與使用者協作設計劇本（區塊式編輯） ─────────────────
+def _scenario_brief(sc: Scenario) -> str:
+    w, L = sc.世界觀, sc.會變層
+    lines = [
+        f"世界觀：基調={w.基調 or '（空）'}｜法則 {len(w.法則)} 條｜背景{'已寫' if w.背景 else '（空）'}",
+        f"場景：地點={sc.scene.地點 or '（空）'}｜鉤子{'已寫' if sc.scene.鉤子 else '（空）'}｜在場={sc.scene.在場 or '（空）'}",
+    ]
+    if sc.角色卡:
+        for cid, c in sc.角色卡.items():
+            lines.append(f"角色[{cid}]：{c.名}（{c.陣營}/{c.性別 or '?'}）能力{len(c.能力)}/防禦{len(c.防禦特性)}/弱點{len(c.弱點)}")
+    else:
+        lines.append("角色：（尚無）")
+    lines.append(f"初始局面：已配置角色 {len(L.角色)}｜空間關係{len(L.場景.空間關係)}｜場景事實{len(L.場景.場景事實)}｜社會事實{len(L.場景.社會事實)}")
+    return "\n".join(lines)
+
+
+def author_missing(sc: Scenario) -> list:
+    m = []
+    if not sc.世界觀.基調:
+        m.append("世界觀基調")
+    if not sc.scene.地點:
+        m.append("場景地點")
+    if not sc.scene.鉤子:
+        m.append("開場鉤子")
+    if not any(c.扮演 == "玩家" for c in sc.角色卡.values()):
+        m.append("玩家角色")
+    if not any(c.陣營 == "敵" for c in sc.角色卡.values()):
+        m.append("至少一個敵人")
+    if not sc.會變層.角色:
+        m.append("初始局面（姿勢/速度/行動值）")
+    return m
+
+
+async def author_turn(grok: GrokClient, sc: Scenario, history: list, user_msg: str) -> AuthorReply:
+    brief = _scenario_brief(sc)
+    缺 = "、".join(author_missing(sc)) or "（基本要件看來已齊）"
+    hist = "\n".join(f"{r}：{t}" for r, t in history[-6:]) or "（剛開始）"
+    在場ids = "、".join(sc.scene.在場) or "（尚無）"
+    prompt = f"""你是跑團遊戲的「編劇」，與使用者協作設計一份劇本。你要主動提案、填入具體草稿，而非只問空泛問題。
+
+# 編劇守則（決定品質）
+- 角色卡雙用：演戲欄（性格/說話風格/動機目標/行為偏好）＋裁決欄（能力/防禦特性/弱點）；務必補上「性別」與外貌年齡（寫進身分背景），避免被腦補弄錯。
+- **把關鍵弱點設成秘密**：放在角色卡「弱點」，並可在會變層用 可見性=gm 埋線索；別讓玩家開局就知道（可被遊戲中發現利用）。
+- 世界觀「法則」要能**影響裁決**（例：某類高手刀槍不入、輕功可飛簷走壁、內傷難癒）。
+- **埋鉤子與張力**：開場 hook 要逼玩家立刻回應；用場景事實/社會事實提供籌碼與變數（債務、人質、恩怨、出口封死）。
+- 會變層初始化：每個在場角色的「姿勢位置、行動速度(玩家7/常5/快6/負傷4)、感知能力」；必要時設「初始行動值」做先機（埋伏者高）；空間關係與場景事實；社會事實。
+- 可見性只用：public / gm / faction:陣營 / self:角色id。
+- **陣營只用「我方」或「敵」**（玩家與隊友＝我方，對手＝敵；引擎據此判敵我，不可自創如「中立/敵對」）。
+- 角色 id 用簡短英文（如 player/aqing/scar）；玩家角色的「扮演」填「玩家」，其餘填「agent」。
+- 能力/防禦特性/弱點一律用**質性描述**，**不要寫數值**（寫「舊傷復發時使不上力」而非「行動值-2」）。
+
+# 目前劇本狀態
+{brief}
+在場角色 id：{在場ids}
+
+# 還缺/待決
+{缺}
+
+# 最近對話
+{hist}
+
+# 使用者這句話
+{user_msg}
+
+# 你的任務（重要）
+**優先回應使用者的明確要求**：若要求關於某個角色（名字/性格/能力/弱點/秘密/外貌），就**更新該角色的 char 區塊**（角色卡是劇本核心，別一直延後到「待補」）。沒有特別指向時，挑「還缺/待決」中最關鍵的一項補上（通常是還沒建的角色卡）。
+理解使用者意圖，**本回合只更新一個區塊**：
+- 區塊="world" → 填 world（World：基調/背景/法則）
+- 區塊="scene" → 填 scene（Scene：id/地點/鉤子/在場）
+- 區塊="char" → 填 char_id 與 char（一張完整角色卡）
+- 區塊="ledger" → 填 ledger（完整初始會變層；**沿用已有的，再加新的**，別漏掉已配置的角色）
+- 區塊="none" → 純提問或建議，不更新
+把對應區塊的欄位**完整填好**，其餘區塊欄位留 null。reply 簡短說明你做了什麼或要問什麼並引導下一步。
+missing 列出還缺的關鍵部分；當「世界觀基調+場景+鉤子+玩家+至少一敵+基本初始局面」齊備時 done=true。
+
+只輸出 JSON（依 schema；未更新的區塊欄位填 null）。"""
+    return await grok.call(prompt, AuthorReply, temperature=0.7, max_tokens=2500)
