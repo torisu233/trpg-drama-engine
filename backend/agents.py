@@ -74,11 +74,11 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 - **手段隨情境**：這不一定是戰鬥場面——該談判/交涉就談、該欺瞞/偽裝就裝、該親近/示好就親近、該動手才動手；照你的動機與當下局面選最合適的，別無腦開打。
 - 若你身負重傷或處於不利，可保守行動甚至放棄（行動填「按兵不動」）。
 - 想隱蔽地行動（使眼色、暗號）就把「隱蔽」設為 true。
-- 可以「一個主要動作 + 一個附帶小動作」（如攻擊同時使眼色、後撤同時嘲諷）；別貪多，一兩件即可。「目標」填**主要對象**。
+- 行動可以**有層次與質感**：把「你具體怎麼做、怎麼說、帶什麼神態情緒」寫清楚（對話/交涉場景就給出**實際要說的話**）；可附帶一個小動作（如說話同時使眼色）。但仍是**一個連貫的主要意圖**，別硬塞多個重大動作；「目標」填主要對象。
 
 只輸出 JSON：
-{{"行動":"一句話：你想做什麼（含做法，可附帶一個小動作），貼著你的口吻","目標":"主要對象的角色id（在場者之一）或 null","隱蔽":false}}"""
-    out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=400)
+{{"行動":"你想做什麼——含具體做法、神態與（若有）實際對白，貼著你的口吻；可附帶一個小動作","目標":"主要對象的角色id（在場者之一）或 null","隱蔽":false}}"""
+    out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
     out.actor = cid
     return out
 
@@ -221,6 +221,18 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
     近期敘事 = "\n".join(s.公開日誌[-2:]) or "（開場）"
     公開錨點 = "；".join(c.內容 for c in (s.會變層.場景.空間關係 + s.會變層.場景.場景事實)
                         if c.可見性 == "public") or "（無）"
+    判定材料 = ""
+    if adj.相關狀態 or adj.逐條判定:
+        判定材料 = ("\n# 本拍涉及的事實與判定（可據此充分描寫，但別超出這些事實）\n"
+                   "相關狀態：" + "；".join(adj.相關狀態) +
+                   "\n判定：" + "；".join(adj.逐條判定))
+    參與 = [intent.actor] + ([reaction.actor] if reaction else [])
+    口吻rows = []
+    for cid in 參與:
+        c = s.角色卡.get(cid)
+        if c:
+            口吻rows.append(f"- {c.名}：性格 {('、'.join(c.性格)) or '—'}；口吻 {c.說話風格 or '—'}")
+    口吻txt = ("\n# 登場者性格與口吻（讓對白與神態貼著角色）\n" + "\n".join(口吻rows)) if 口吻rows else ""
 
     prompt = f"""你是跑團遊戲的 GM／敘事者。把這一拍寫成貼著視角、生動的散文。
 
@@ -238,6 +250,7 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 
 # 本拍行動者
 {行動者行}{反應行}
+{口吻txt}
 
 # 這一拍的地面真相（你知道全部）
 {adj.GM摘要}
@@ -245,6 +258,7 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 
 # 本拍實際造成的狀態變更（忠實據此敘事，注意每條的可見性）
 {變更}
+{判定材料}
 
 # 感知分發（誰察覺到多少——據此決定每人版本能寫什麼）
 {分發}
@@ -261,11 +275,12 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 - 節奏隨基調與模式：打鬥可急，交涉可緩可柔，不必都用戰鬥節奏。
 - 公開版：只寫全場可見的客觀經過；**標「機密gm」或「僅本人/僅該陣營知」的變更，絕不可寫進公開版**。
 - 私密版：只為「察覺到更多」的角色加寫他獨有的感知（如我方才懂的暗號真意）；沒有額外資訊的角色可省略。
-- 控制在 2-4 句，緊湊。
+- **長度隨份量（時間彈性）**：平淡過場一兩句帶過即可；**有戲的關鍵拍要充分鋪陳成一段**（約 3–6 句），調動上面的「相關狀態與判定、角色性格口吻、場景錨點」，寫出神態、動作、對白、情緒的質感——別每拍都干癟。
+- **充分但不杜撰**：可以在已提供的事實上盡情演繹（感官、心理、語氣、節奏），但**所有具體細節都必須源自上面給的材料**（地面真相/相關狀態與判定/狀態變更/角色口吻/場景錨點），不得發明新事實或新實體。
 
 只輸出 JSON：
 {{"公開":"全場可見的敘事","私密":{{"char_id":"該角色獨有的額外感知（可選，沒有就不要這個 key）"}}}}"""
-    return await grok.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=700)
+    return await grok.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1000)
 
 
 # ───────────────── 滾動摘要：壓縮舊敘事，保連貫（只管文氣，不記事實） ─────────────────
