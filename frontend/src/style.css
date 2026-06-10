@@ -42,7 +42,7 @@ pre { white-space: pre-wrap; font-size: 12px; color: #b8b09a; }
 .subcard { border-top: 1px dashed var(--line); padding: 8px 0; }
 details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; padding: 6px 0; }
 .field { margin-bottom: 6px; }
-/* 行動序：單行橫向膠囊，左=最快輪到 */
+/* 行动序：单行横向胶囊，左=最快轮到 */
 .actionstrip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; font-size: 12px; }
 .strip-label { flex: 0 0 auto; }
 .chip { display: inline-flex; align-items: center; gap: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 2px 9px; }
@@ -53,3 +53,9 @@ details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; p
 .minibar { width: 34px; height: 5px; background: #15130f; border-radius: 3px; overflow: hidden; }
 .minifill { display: block; height: 100%; background: var(--accent); transition: width .35s ease; }
 .chip.ready .minifill { background: var(--gold); }
+/* 站内登录闸（取代被部分手机浏览器封锁的 window.prompt）*/
+.loginwrap { display: flex; justify-content: center; padding: 48px 12px; }
+.loginbox { width: 100%; max-width: 360px; text-align: center; }
+.loginbox h2 { margin-top: 0; }
+.loginbox input { margin-top: 10px; font-size: 16px; padding: 12px; }  /* 16px 防 iOS 聚焦放大 */
+.loginbox button { width: 100%; padding: 12px; font-size: 15px; }
