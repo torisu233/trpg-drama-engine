@@ -20,9 +20,57 @@
         </template>
       </div>
 
+      <!-- 你的局面（常驻置顶）-->
+      <div class="panel situ" v-if="snap.局面">
+        <div class="situ-line"><b>场景</b>{{ snap.局面.场景 }}</div>
+        <div class="situ-line" v-if="snap.局面.场面 && snap.局面.场面.length"><b>场面</b>{{ snap.局面.场面.join('；') }}</div>
+        <div class="situ-line" v-if="snap.局面.情报 && snap.局面.情报.length"><b>约定/情报</b>{{ snap.局面.情报.join('；') }}</div>
+        <div class="situ-line muted" v-if="snap.局面.计策 && snap.局面.计策.length"><b>我方计策</b>{{ snap.局面.计策.join('；') }}</div>
+      </div>
+
+      <!-- 在场角色：我方详尽 / 敌方仅可见 -->
+      <div class="cards rolecards" v-if="snap.角色 && snap.角色.length">
+        <div v-for="c in snap.角色" :key="c.id" class="card role" :class="{ ally: c.是我方, foe: !c.是我方 }">
+          <div class="card-title">
+            {{ c.名 }}
+            <span class="muted small">· {{ c.阵营 }}<template v-if="c.性别">·{{ c.性别 }}</template><template v-if="c.是自己">·你</template></span>
+          </div>
+          <div class="small muted">速度 {{ c.行动速度 }} · 感知 {{ c.感知能力 }}</div>
+          <div class="small">{{ c.姿势位置 || '在场' }}</div>
+          <div class="small" v-if="c.状态 && c.状态.length">状态：{{ c.状态.join('，') }}</div>
+          <template v-if="c.是我方">
+            <div class="small" v-if="c.能力 && c.能力.length"><b>能力</b> {{ c.能力.join('、') }}</div>
+            <div class="small" v-if="c.防御特性 && c.防御特性.length"><b>防御</b> {{ c.防御特性.join('、') }}</div>
+            <div class="small weak" v-if="c.弱点 && c.弱点.length"><b>弱点</b> {{ c.弱点.join('、') }}</div>
+            <div class="small muted" v-if="c.动机目标"><b>动机</b> {{ c.动机目标 }}</div>
+            <details v-if="hasMore(c)" class="more">
+              <summary class="muted small">更多</summary>
+              <div class="small" v-if="c.身分背景">身分：{{ c.身分背景 }}</div>
+              <div class="small" v-if="c.性格 && c.性格.length">性格：{{ c.性格.join('、') }}</div>
+              <div class="small" v-if="c.说话风格">说话：{{ c.说话风格 }}</div>
+              <div class="small" v-if="c.行为偏好 && c.行为偏好.length">偏好：{{ c.行为偏好.join('、') }}</div>
+              <div class="small" v-if="c.持有 && c.持有.length">持有：{{ c.持有.join('、') }}</div>
+            </details>
+          </template>
+          <div class="small muted foe-hint" v-else>底细未知，靠观察判断</div>
+        </div>
+      </div>
+
       <div class="log">
-        <div v-for="(line, i) in snap.公开日志" :key="i"
-             class="turn" :class="{ sys: line.startsWith('【') }">{{ line }}</div>
+        <div v-for="(e, i) in beats" :key="i" class="beat" :class="{ sys: !e.行动者 }">
+          <div class="beat-who" v-if="e.行动者">
+            <span class="who-name" :class="factionClass(e.阵营)">{{ e.行动者名 }}</span>
+          </div>
+          <div class="beat-body">
+            <div class="beat-input" v-if="e.行动文本">
+              <span class="inp-tag">行动</span>{{ e.行动文本 }}
+            </div>
+            <div class="beat-input" v-if="e.反应文本">
+              <span class="inp-tag">回应</span><span class="inp-who" v-if="e.反应者名">{{ e.反应者名 }}：</span>{{ e.反应文本 }}
+            </div>
+            <div class="beat-narr">{{ e.叙事 }}</div>
+          </div>
+        </div>
       </div>
 
       <div v-if="g.busy" class="muted" style="margin-top:8px">…（裁决与叙事中，每拍约 10–15 秒）…</div>
@@ -67,10 +115,6 @@
       </div>
 
       <details style="margin-top:12px">
-        <summary class="muted">你感知到的局面</summary>
-        <pre>{{ snap.玩家视图 }}</pre>
-      </details>
-      <details>
         <summary class="muted">🔧 帐本调试（含 gm 秘密，上帝视角）</summary>
         <pre>{{ snap.帐本调试 }}</pre>
       </details>
@@ -88,11 +132,23 @@ const route = useRoute()
 const snap = computed(() => g.snap)
 const pendingType = computed(() => g.snap && g.snap.pending && g.snap.pending.type)
 const targets = computed(() => (g.snap?.在场 || []).filter((c) => c.id !== 'player'))
+// 结构化每拍日志；旧存档无「日志」时退回纯文本「公开日志」
+const beats = computed(() => {
+  const s = g.snap
+  if (!s) return []
+  if (s.日志 && s.日志.length) return s.日志
+  return (s.公开日志 || []).map((line) => ({ 叙事: line, 行动者: null }))
+})
+function factionClass(f) { return f === '我方' ? 'ally' : (f === '敌' ? 'foe' : '') }
 
 const act = ref({ 行动: '', 目标: '', 隐蔽: false })
 const reaction = ref('')
 
 function pct(b) { return Math.min(100, Math.round((b.行动值 / b.门槛) * 100)) }
+function hasMore(c) {
+  return c.身分背景 || (c.性格 && c.性格.length) || c.说话风格 ||
+    (c.行为偏好 && c.行为偏好.length) || (c.持有 && c.持有.length)
+}
 
 onMounted(async () => {
   const gid = route.params.gid

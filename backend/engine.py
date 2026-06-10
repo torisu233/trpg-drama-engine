@@ -126,9 +126,9 @@ def build_view(s: Session, viewer: str) -> str:
         if cid not in s.scene.在场:
             continue
         card = s.角色卡[cid]
-        who = "你" if cid == viewer else card.名
         g = f"，{card.性别}" if card.性别 else ""
-        seg = [f"{who}（{card.阵营}{g}）：{cl.姿势位置 or '在场'}"]
+        self_mark = "·本人" if cid == viewer else ""   # 不用「你」——「你」留给叙事专指主角玩家
+        seg = [f"{card.名}（{card.阵营}{g}{self_mark}）：{cl.姿势位置 or '在场'}"]
         body = _fmt_conds(cl.身心状况, viewer, faction) + _fmt_conds(cl.特殊情况, viewer, faction)
         if cid == viewer:                    # 自己能看到自己的随身与物品
             body += _fmt_conds(cl.随身, viewer, faction)
@@ -144,6 +144,49 @@ def build_view(s: Session, viewer: str) -> str:
         lines.append("【我方计策】" + "；".join(plans))
 
     return "\n".join(lines)
+
+
+def player_situation(s: Session, viewer: str = PLAYER) -> dict:
+    """玩家可见的环境与社会面（迷雾过滤）：场景/场面/约定情报/我方计策。结构化给前端。"""
+    fac = s.角色卡[viewer].阵营
+    sc = s.会变层.场景
+    return {
+        "场景": s.scene.地点,
+        "场面": _fmt_conds(sc.场景事实, viewer, fac) + _fmt_conds(sc.空间关系, viewer, fac),
+        "情报": _fmt_conds(sc.社会事实, viewer, fac),
+        "计策": list(s.会变层.阵营私有.get(fac, {}).get("计策", [])),
+    }
+
+
+def known_characters(s: Session, viewer: str = PLAYER) -> list:
+    """玩家所知的在场角色（结构化）。
+    - 同阵营（含自己）：给完整角色卡——能力/防御/弱点/动机等，对队友本就知情。
+    - 敌方：只给可见状态——底细是要靠观察发现的秘密，不注入。
+    """
+    fac = s.角色卡[viewer].阵营
+    out = []
+    for cid in s.scene.在场:
+        cl = s.会变层.角色.get(cid)
+        if cid not in s.角色卡 or cl is None:
+            continue
+        card = s.角色卡[cid]
+        ally = card.阵营 == fac
+        item = {
+            "id": cid, "名": card.名, "阵营": card.阵营, "性别": card.性别,
+            "是自己": cid == viewer, "是我方": ally,
+            "姿势位置": cl.姿势位置, "行动速度": cl.行动速度, "感知能力": cl.感知能力,
+            "状态": _fmt_conds(cl.身心状况, viewer, fac) + _fmt_conds(cl.特殊情况, viewer, fac),
+        }
+        if ally:                                  # 我方互知底细
+            item.update({
+                "身分背景": card.身分背景, "性格": card.性格, "说话风格": card.说话风格,
+                "动机目标": card.动机目标, "行为偏好": card.行为偏好,
+                "能力": card.能力, "防御特性": card.防御特性, "弱点": card.弱点,
+            })
+            if cid == viewer and cl.物品:         # 自己看得到随身物品
+                item["持有"] = [f"{it.名}（{it.状态}）" for it in cl.物品.values()]
+        out.append(item)
+    return out
 
 
 def ground_truth(s: Session) -> str:
@@ -224,6 +267,34 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
     for cid, cap in adj.感知更新.items():
         if cid in s.会变层.角色:
             s.会变层.角色[cid].感知能力 = cap
+
+
+# ───────────────── 结构化日志条目（行动者 + 我方输入文本，供前端展示） ─────────────────
+def log_system_entry(text: str) -> dict:
+    """系统行（场景/开场/结束）：无行动者。"""
+    return {"叙事": text, "行动者": None, "行动者名": None, "阵营": None,
+            "行动文本": None, "反应文本": None, "反应者名": None}
+
+
+def log_action_entry(s: Session, intent, reaction, actor: str, narration: str) -> dict:
+    """一拍的结构化记录：总记行动者；行动者/反应者属我方时附带其输入文本（敌方意图不泄露）。"""
+    card = s.角色卡.get(actor)
+    ally = bool(card and card.阵营 == "我方")
+    e = {
+        "叙事": narration,
+        "行动者": actor,
+        "行动者名": card.名 if card else actor,
+        "阵营": card.阵营 if card else "",
+        "行动文本": intent.行动 if ally else None,
+        "反应文本": None,
+        "反应者名": None,
+    }
+    if reaction is not None:
+        rc = s.角色卡.get(reaction.actor)
+        if rc and rc.阵营 == "我方":
+            e["反应文本"] = reaction.反应
+            e["反应者名"] = rc.名
+    return e
 
 
 # ───────────────── 分发叙事（GM 写、程序送） ─────────────────

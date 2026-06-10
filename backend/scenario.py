@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from typing import List
 from .models import Scenario, Session
+from . import engine
 
 SCENARIOS_DIR = Path(__file__).resolve().parent.parent / "scenarios"
 
@@ -92,11 +93,13 @@ def apply_author_reply(sc: Scenario, rep) -> str:
 def session_from_scenario(sc: Scenario) -> Session:
     """把 Scenario 包成全新可玩 Session（深拷贝静态数据，初始化运行期字段）。"""
     记忆 = {cid: [] for cid in sc.scene.在场}
-    公开日志 = []
+    公开日志, 日志 = [], []
     if sc.scene.地点:
-        公开日志.append(f"【场景】{sc.scene.地点}")
+        line = f"【场景】{sc.scene.地点}"
+        公开日志.append(line); 日志.append(engine.log_system_entry(line))
     if sc.scene.钩子:
-        公开日志.append(f"【开场】{sc.scene.钩子}")
+        line = f"【开场】{sc.scene.钩子}"
+        公开日志.append(line); 日志.append(engine.log_system_entry(line))
     return Session(
         scene=sc.scene.model_copy(deep=True),
         世界观=sc.世界观.model_copy(deep=True),
@@ -104,4 +107,5 @@ def session_from_scenario(sc: Scenario) -> Session:
         会变层=sc.会变层.model_copy(deep=True),
         记忆=记忆,
         公开日志=公开日志,
+        日志=日志,
     )

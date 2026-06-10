@@ -57,6 +57,7 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, l
     engine.apply_delta(s, adj)
     narr = await agents.narrate(grok, s, adj, intent, reaction)
     engine.distribute(s, narr.公开, narr.私密)
+    s.日志.append(engine.log_action_entry(s, intent, reaction, actor, narr.公开))
     engine.consume_turn(s, actor)
     s.回合数 += 1
     engine.expire_transients(s)
@@ -96,6 +97,7 @@ async def _advance_stream(grok: GrokClient, s: Session):
         if end:
             s.结束 = end
             s.公开日志.append(f"【场景结束】{end}")
+            s.日志.append(engine.log_system_entry(f"【场景结束】{end}"))
             yield s
             return
         actor = engine.pick_actor(s)

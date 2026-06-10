@@ -96,9 +96,12 @@ def snapshot(gid: str, s: Session) -> dict:
         "结束": s.结束,
         "pending": s.pending,
         "公开日志": s.公开日志,
+        "日志": s.日志,
         "在场": [{"id": cid, "名": s.角色卡[cid].名, "阵营": s.角色卡[cid].阵营}
                  for cid in s.scene.在场 if cid in s.角色卡],
         "行动条": _action_bar(s),
+        "局面": engine.player_situation(s),
+        "角色": engine.known_characters(s),
         "玩家视图": engine.build_view(s, "player"),
         "帐本调试": engine.ground_truth(s),
     }

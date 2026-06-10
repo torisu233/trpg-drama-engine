@@ -39,6 +39,15 @@ def run():
         assert any("开场" in line for line in r["公开日志"])
         assert "怕火" not in r["玩家视图"] and "怕火" in r["帐本调试"]   # 迷雾仍正确
 
+        # 结构化局面 + 角色：我方给完整卡（能力/弱点）、敌方只给可见状态
+        assert r["局面"]["场景"], r["局面"]
+        roles = {x["id"]: x for x in r["角色"]}
+        assert roles["aqing"]["是我方"] and roles["aqing"].get("能力")       # 队友：能力可见
+        assert "scar" in roles and not roles["scar"]["是我方"]
+        assert "弱点" not in roles["scar"] and "能力" not in roles["scar"]    # 敌方：卡不注入
+        import json as _json
+        assert "怕火" not in _json.dumps(roles["scar"], ensure_ascii=False)   # 敌方秘密不外泄
+
         snap = c.get(f"/api/game/{gid}").json()
         assert snap["game_id"] == gid
 

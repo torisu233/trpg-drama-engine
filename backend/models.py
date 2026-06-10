@@ -96,7 +96,8 @@ class Session(BaseModel):
     会变层: Ledger
     记忆: Dict[str, List[str]] = Field(default_factory=dict)   # 各角色近期逐字叙事（滚动窗）
     摘要: Dict[str, str] = Field(default_factory=dict)          # 各角色「先前剧情」滚动摘要
-    公开日志: List[str] = Field(default_factory=list)           # 给玩家看的叙事流
+    公开日志: List[str] = Field(default_factory=list)           # 给玩家看的叙事流（纯文本，供记忆/裁决/向后兼容）
+    日志: List[dict] = Field(default_factory=list)              # 结构化每拍：{叙事,行动者,行动者名,阵营,行动文本(我方),反应文本(我方)…}
     回合数: int = 0
     pending: Optional[dict] = None                            # 等待玩家的状态
     结束: Optional[str] = None                                # 结束原因
