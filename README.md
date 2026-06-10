@@ -21,12 +21,14 @@ backend/
   game_store.py 遊戲場次 + JSON 存檔
   routes/       scenarios.py（CRUD+編劇）, game.py（遊玩）
   ── CLI / 診斷 ──
-  play.py       命令行遊玩    author.py   命令行編劇
-  smoke_test.py 純邏輯回歸    api_smoke.py 離線 API 測試
-  trace_test.py 逐環節追蹤    live_*.py    端到端 live
+  play.py       命令行遊玩          author.py    命令行編劇
+  smoke_test.py 純邏輯回歸(10項)    api_smoke.py 離線 API 測試
+  trace_test.py 逐環節追蹤          stream_test  串流逐拍驗證
+  mode_test.py  非戰鬥模式驗證      live_*/author_test  端到端 live
 scenarios/      劇本（編劇產物，版控）  *.json
 data/games/     遊戲存檔（執行期，gitignore）  *.json
-frontend/       （舊 vanilla 頁，將由 Vue 取代）
+frontend/       Vue 3 SPA（Vite+Pinia+Router）：劇本集 / 編劇頁 / 遊玩頁
+publish.ps1     一鍵 Cloudflare 隧道公開（密碼閘）
 ```
 
 ## 安裝
@@ -61,7 +63,7 @@ npm run dev        # http://localhost:5173 （/api 自動代理到 8100）
 
 **測試**
 ```powershell
-.\.venv\Scripts\python.exe -m backend.smoke_test   # 純邏輯 9 項
+.\.venv\Scripts\python.exe -m backend.smoke_test   # 純邏輯 10 項
 .\.venv\Scripts\python.exe -m backend.api_smoke     # 離線 API（不打 grok）
 ```
 
@@ -96,15 +98,22 @@ npm run dev        # http://localhost:5173 （/api 自動代理到 8100）
 | GET | `/api/games` | 進行中清單 |
 | POST | `/api/game/new` | `{scenario_id}` → `{game_id, snapshot}` |
 | GET | `/api/game/{id}` | 取 snapshot |
-| POST | `/api/game/{id}/action` | `{action:{行動,目標,隱蔽}}` → snapshot |
-| POST | `/api/game/{id}/react` | `{reaction:{反應}}` → snapshot |
+| POST | `/api/game/{id}/action` | `{action:{行動,目標,隱蔽}}` → **NDJSON 串流**（逐拍 snapshot） |
+| POST | `/api/game/{id}/react` | `{reaction:{反應}}` → **NDJSON 串流**（逐拍 snapshot） |
+| DELETE | `/api/game/{id}` | 刪除遊戲 |
 
-snapshot = `{game_id, 回合數, 結束, pending, 公開日誌, 玩家視圖, 帳本除錯}`。
+snapshot = `{game_id, 回合數, 結束, pending, 公開日誌, 在場, 行動條, 玩家視圖, 帳本除錯}`。
+
+> 公開分享時設 `APP_PASSWORD`，則 `/api/*`（health 除外）須帶 header `X-App-Password`。
 
 ## 路線圖
-- [x] 核心戲劇引擎（行動條/兩軸/裁決/敘事/迷霧/摘要/整理）
-- [x] 劇本資料層 + 編劇 agent + CLI
+- [x] 核心戲劇引擎（行動條/兩軸/裁決/敘事/迷霧/摘要/帳本整理）
+- [x] 世界觀法則 + 雙用角色卡（含秘密弱點）+ 社會事實長期記憶
+- [x] 模式中立 prompt（對話/交涉/潛入皆適用）+ 敘事豐富度
+- [x] 劇本資料層 + 編劇 agent + 全可編輯編劇頁
 - [x] 後端 API 化（編劇無狀態 / 遊玩有狀態 + JSON 存檔）
-- [x] **Vue 3 前端**：劇本集 / 編劇頁（聊天+面板綁草稿）/ 遊玩頁
-- [ ] 編劇頁面板的細部手動編輯（目前手動可改基調/背景/地點/鉤子，其餘靠對話）
-- [ ] 串流逐拍顯示、批次敘事（敘事品質增強）
+- [x] Vue 3 前端：劇本集（可刪）/ 編劇頁 / 遊玩頁
+- [x] 遊玩逐拍串流顯示 + 即時行動條（單行膠囊）
+- [x] 一鍵公網分享（Cloudflare 隧道 + 密碼閘）
+- [ ] 批次敘事（多 NPC 拍揉成一段，文氣更佳）
+- [ ] 上雲 24/7 部署（目前為臨時隧道）
