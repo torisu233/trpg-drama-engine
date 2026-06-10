@@ -1,6 +1,6 @@
-"""核心引擎（純邏輯，無 API）：行動條、兩軸判定、迷霧過濾、delta 套用。
+"""内核引擎（纯逻辑，无 API）：行动条、两轴判定、迷雾过滤、delta 套用。
 
-這些都是可單測的純函式；agent 呼叫在 agents.py，流程編排在 flow.py。
+这些都是可单测的纯函数；agent 调用在 agents.py，流程编排在 flow.py。
 """
 import random
 from typing import List, Optional, Tuple
@@ -9,82 +9,82 @@ from . import config
 
 PLAYER = "player"
 
-# 觸發「無法反應 / 失能」的關鍵字
-INCAPACITATED_KW = ("昏迷", "失去意識", "綁", "縛", "癱", "暈", "制伏", "壓制")
-# 環境爭議關鍵字（無對手仍是賭注）
-RISKY_KW = ("跳", "攀", "潛", "賭", "搶", "翻越", "撲", "閃身")
+# 触发「无法反应 / 失能」的关键字
+INCAPACITATED_KW = ("昏迷", "失去意识", "绑", "缚", "瘫", "晕", "制伏", "压制")
+# 环境争议关键字（无对手仍是赌注）
+RISKY_KW = ("跳", "攀", "潜", "赌", "抢", "翻越", "扑", "闪身")
 
 
-# ───────────────── 行動條 ─────────────────
+# ───────────────── 行动条 ─────────────────
 def _tick(s: Session) -> None:
-    for cl in s.會變層.角色.values():
-        cl.行動值 += cl.行動速度
+    for cl in s.会变层.角色.values():
+        cl.行动值 += cl.行动速度
 
 
 def pick_actor(s: Session) -> str:
-    """每次呼叫先 +1 拍；沒人達門檻就繼續加，直到有人達標。回傳行動者 id。"""
-    _tick(s)  # 「場上每行動一次，大家加一次」
-    while not any(cl.行動值 >= config.ACTION_THRESHOLD for cl in s.會變層.角色.values()):
+    """每次调用先 +1 拍；没人达门槛就继续加，直到有人达标。回传行动者 id。"""
+    _tick(s)  # 「场上每行动一次，大家加一次」
+    while not any(cl.行动值 >= config.ACTION_THRESHOLD for cl in s.会变层.角色.values()):
         _tick(s)
-    ready = [cid for cid, cl in s.會變層.角色.items()
-             if cl.行動值 >= config.ACTION_THRESHOLD]
-    if PLAYER in ready:                       # 平手：玩家優先
+    ready = [cid for cid, cl in s.会变层.角色.items()
+             if cl.行动值 >= config.ACTION_THRESHOLD]
+    if PLAYER in ready:                       # 平手：玩家优先
         return PLAYER
-    return max(ready, key=lambda c: s.會變層.角色[c].行動值)  # 否則行動值高者
+    return max(ready, key=lambda c: s.会变层.角色[c].行动值)  # 否则行动值高者
 
 
 def consume_turn(s: Session, actor: str) -> None:
-    s.會變層.角色[actor].行動值 -= config.ACTION_THRESHOLD   # 扣門檻、保留溢出
+    s.会变层.角色[actor].行动值 -= config.ACTION_THRESHOLD   # 扣门槛、保留溢出
 
 
-# ───────────────── 感知 / 兩軸 ─────────────────
+# ───────────────── 感知 / 两轴 ─────────────────
 def _perceives(s: Session, who: str) -> bool:
-    cap = s.會變層.角色[who].感知能力
-    return not any(k in cap for k in ("昏迷", "失去意識"))
+    cap = s.会变层.角色[who].感知能力
+    return not any(k in cap for k in ("昏迷", "失去意识"))
 
 
 def _can_oppose(s: Session, who: str) -> bool:
-    cl = s.會變層.角色[who]
-    if any(k in cl.感知能力 for k in ("昏迷", "失去意識")):
+    cl = s.会变层.角色[who]
+    if any(k in cl.感知能力 for k in ("昏迷", "失去意识")):
         return False
-    blob = " ".join(c.內容 for c in cl.特殊情況)
+    blob = " ".join(c.内容 for c in cl.特殊情况)
     return not any(k in blob for k in INCAPACITATED_KW)
 
 
 def target_char(s: Session, intent) -> Optional[str]:
-    t = intent.目標
-    if t and t in s.會變層.角色 and t != intent.actor:
+    t = intent.目标
+    if t and t in s.会变层.角色 and t != intent.actor:
         return t
     return None
 
 
 def needs_reaction(s: Session, intent) -> Optional[str]:
-    """軸 A：是否該向某角色收反應？回傳該角色 id 或 None。
-    閘門：對方是角色 ∧（是玩家 ∨（感知得到 ∧ 能對抗））。模稜兩可寧可多收。"""
+    """轴 A：是否该向某角色收反应？回传该角色 id 或 None。
+    闸门：对方是角色 ∧（是玩家 ∨（感知得到 ∧ 能对抗））。模棱两可宁可多收。"""
     tgt = target_char(s, intent)
     if not tgt:
         return None
     if tgt == PLAYER:
-        return PLAYER                       # 對玩家一定收
+        return PLAYER                       # 对玩家一定收
     if _perceives(s, tgt) and _can_oppose(s, tgt):
         return tgt
     return None
 
 
 def is_contested(s: Session, intent, reaction_target: Optional[str]) -> bool:
-    """軸 B：是否爭議（擲運氣）？被主動對抗 或 環境本身是賭注。"""
+    """轴 B：是否争议（掷运气）？被主动对抗 或 环境本身是赌注。"""
     if reaction_target:
         return True
-    return any(k in (intent.行動 or "") for k in RISKY_KW)
+    return any(k in (intent.行动 or "") for k in RISKY_KW)
 
 
 def roll_luck() -> str:
     return random.choices(config.LUCK_TIERS, weights=config.LUCK_WEIGHTS, k=1)[0]
 
 
-# ───────────────── 迷霧：產出某角色可見的視圖文字 ─────────────────
+# ───────────────── 迷雾：产出某角色可见的视图文字 ─────────────────
 def _visible(cond: Condition, viewer: str, faction: str) -> bool:
-    v = cond.可見性
+    v = cond.可见性
     if v == "public":
         return True
     if v == "gm":
@@ -103,160 +103,160 @@ def _fmt_conds(conds: List[Condition], viewer: str, faction: str) -> List[str]:
             continue
         g = f"（{c.gates}）" if c.gates else ""
         d = f"[{c.程度}]" if c.程度 else ""
-        out.append(f"{c.內容}{d}{g}")
+        out.append(f"{c.内容}{d}{g}")
     return out
 
 
 def build_view(s: Session, viewer: str) -> str:
-    """組出 viewer 能看到的局面文字（餵給角色 agent）。維持迷霧。"""
-    faction = s.角色卡[viewer].陣營
-    lines = [f"【場景】{s.scene.地點}"]
+    """组出 viewer 能看到的局面文字（喂给角色 agent）。维持迷雾。"""
+    faction = s.角色卡[viewer].阵营
+    lines = [f"【场景】{s.scene.地点}"]
 
-    # 場景公開事實
-    facts = _fmt_conds(s.會變層.場景.場景事實, viewer, faction) \
-        + _fmt_conds(s.會變層.場景.空間關係, viewer, faction)
+    # 场景公开事实
+    facts = _fmt_conds(s.会变层.场景.场景事实, viewer, faction) \
+        + _fmt_conds(s.会变层.场景.空间关系, viewer, faction)
     if facts:
-        lines.append("【場面】" + "；".join(facts))
-    social = _fmt_conds(s.會變層.場景.社會事實, viewer, faction)
+        lines.append("【场面】" + "；".join(facts))
+    social = _fmt_conds(s.会变层.场景.社会事实, viewer, faction)
     if social:
-        lines.append("【約定/情報】" + "；".join(social))
+        lines.append("【约定/情报】" + "；".join(social))
 
-    # 各角色（自己看全部；別人只看公開＋可見）
-    for cid, cl in s.會變層.角色.items():
-        if cid not in s.scene.在場:
+    # 各角色（自己看全部；别人只看公开＋可见）
+    for cid, cl in s.会变层.角色.items():
+        if cid not in s.scene.在场:
             continue
         card = s.角色卡[cid]
         who = "你" if cid == viewer else card.名
-        g = f"，{card.性別}" if card.性別 else ""
-        seg = [f"{who}（{card.陣營}{g}）：{cl.姿勢位置 or '在場'}"]
-        body = _fmt_conds(cl.身心狀況, viewer, faction) + _fmt_conds(cl.特殊情況, viewer, faction)
-        if cid == viewer:                    # 自己能看到自己的隨身與物品
-            body += _fmt_conds(cl.隨身, viewer, faction)
+        g = f"，{card.性别}" if card.性别 else ""
+        seg = [f"{who}（{card.阵营}{g}）：{cl.姿势位置 or '在场'}"]
+        body = _fmt_conds(cl.身心状况, viewer, faction) + _fmt_conds(cl.特殊情况, viewer, faction)
+        if cid == viewer:                    # 自己能看到自己的随身与物品
+            body += _fmt_conds(cl.随身, viewer, faction)
             if cl.物品:
-                body.append("持有：" + "、".join(f"{it.名}({it.狀態})" for it in cl.物品.values()))
+                body.append("持有：" + "、".join(f"{it.名}({it.状态})" for it in cl.物品.values()))
         if body:
             seg.append("，".join(body))
         lines.append(" ".join(seg))
 
-    # 陣營私有計策
-    plans = s.會變層.陣營私有.get(faction, {}).get("計策", [])
+    # 阵营私有计策
+    plans = s.会变层.阵营私有.get(faction, {}).get("计策", [])
     if plans:
-        lines.append("【我方計策】" + "；".join(plans))
+        lines.append("【我方计策】" + "；".join(plans))
 
     return "\n".join(lines)
 
 
 def ground_truth(s: Session) -> str:
-    """給裁決的完整地面真相（全可見，含 gm 秘密）。"""
-    lines = [f"【場景】{s.scene.地點}"]
-    for c in s.會變層.場景.場景事實 + s.會變層.場景.空間關係 + s.會變層.場景.社會事實:
-        tag = "" if c.可見性 == "public" else f" <{c.可見性}>"
+    """给裁决的完整地面真相（全可见，含 gm 秘密）。"""
+    lines = [f"【场景】{s.scene.地点}"]
+    for c in s.会变层.场景.场景事实 + s.会变层.场景.空间关系 + s.会变层.场景.社会事实:
+        tag = "" if c.可见性 == "public" else f" <{c.可见性}>"
         g = f"（{c.gates}）" if c.gates else ""
-        lines.append(f"- {c.內容}{g}{tag}")
-    for cid, cl in s.會變層.角色.items():
+        lines.append(f"- {c.内容}{g}{tag}")
+    for cid, cl in s.会变层.角色.items():
         card = s.角色卡[cid]
-        g = f"/{card.性別}" if card.性別 else ""
-        lines.append(f"◆ {card.名}[{cid}]（{card.陣營}{g}）速度{cl.行動速度} 感知:{cl.感知能力}")
+        g = f"/{card.性别}" if card.性别 else ""
+        lines.append(f"◆ {card.名}[{cid}]（{card.阵营}{g}）速度{cl.行动速度} 感知:{cl.感知能力}")
         if card.能力:
             lines.append(f"  能力：{'、'.join(card.能力)}")
-        if card.防禦特性:
-            lines.append(f"  防禦特性：{'、'.join(card.防禦特性)}")
-        if card.弱點:
-            lines.append(f"  弱點：{'、'.join(card.弱點)}")
-        lines.append(f"  姿勢位置：{cl.姿勢位置}")
-        for c in cl.身心狀況 + cl.特殊情況 + cl.隨身:
-            tag = "" if c.可見性 == "public" else f" <{c.可見性}>"
+        if card.防御特性:
+            lines.append(f"  防御特性：{'、'.join(card.防御特性)}")
+        if card.弱点:
+            lines.append(f"  弱点：{'、'.join(card.弱点)}")
+        lines.append(f"  姿势位置：{cl.姿势位置}")
+        for c in cl.身心状况 + cl.特殊情况 + cl.随身:
+            tag = "" if c.可见性 == "public" else f" <{c.可见性}>"
             g = f"（{c.gates}）" if c.gates else ""
-            lines.append(f"  - {c.內容}{g}{tag}")
+            lines.append(f"  - {c.内容}{g}{tag}")
         for it in cl.物品.values():
-            lines.append(f"  - 物品 {it.名}：{it.狀態}，{it.位置}")
+            lines.append(f"  - 物品 {it.名}：{it.状态}，{it.位置}")
     return "\n".join(lines)
 
 
-# ───────────────── 套用裁決 delta（防禦式，絕不崩） ─────────────────
+# ───────────────── 套用裁决 delta（防御式，绝不崩） ─────────────────
 def _to_cond(d: DeltaItem, turn: int) -> Condition:
-    return Condition(內容=d.內容, gates=d.gates, 程度=d.程度,
-                     可見性=d.可見性, 來源="裁決",
-                     剩餘拍數=d.剩餘拍數, 創建回合=turn)
+    return Condition(内容=d.内容, gates=d.gates, 程度=d.程度,
+                     可见性=d.可见性, 来源="裁决",
+                     剩余拍数=d.剩余拍数, 创建回合=turn)
 
 
 def _remove_matching(conds: List[Condition], key: str) -> List[Condition]:
-    return [c for c in conds if key not in c.內容]
+    return [c for c in conds if key not in c.内容]
 
 
 def apply_delta(s: Session, adj: Adjudication) -> None:
     delta = adj.ledger_delta
-    turn = s.回合數
+    turn = s.回合数
     # add
     for d in delta.add:
         cond = _to_cond(d, turn)
-        if d.主體 == "場景":
-            if d.類別 == "空間關係":
-                s.會變層.場景.空間關係.append(cond)
-            elif d.類別 in ("社會事實", "承諾", "協議", "結盟", "停火"):
-                s.會變層.場景.社會事實.append(cond)
+        if d.主体 == "场景":
+            if d.类别 == "空间关系":
+                s.会变层.场景.空间关系.append(cond)
+            elif d.类别 in ("社会事实", "承诺", "协议", "结盟", "停火"):
+                s.会变层.场景.社会事实.append(cond)
             else:
-                s.會變層.場景.場景事實.append(cond)
-        elif d.主體 in s.會變層.角色:
-            cl = s.會變層.角色[d.主體]
-            if d.類別 == "姿勢位置":
-                cl.姿勢位置 = d.內容
-            elif d.類別 == "特殊情況":
-                cl.特殊情況.append(cond)
+                s.会变层.场景.场景事实.append(cond)
+        elif d.主体 in s.会变层.角色:
+            cl = s.会变层.角色[d.主体]
+            if d.类别 == "姿势位置":
+                cl.姿势位置 = d.内容
+            elif d.类别 == "特殊情况":
+                cl.特殊情况.append(cond)
             else:
-                cl.身心狀況.append(cond)
-    # remove（以關鍵字匹配）
+                cl.身心状况.append(cond)
+    # remove（以关键字匹配）
     for key in delta.remove:
-        for cl in s.會變層.角色.values():
-            cl.身心狀況 = _remove_matching(cl.身心狀況, key)
-            cl.特殊情況 = _remove_matching(cl.特殊情況, key)
-        s.會變層.場景.場景事實 = _remove_matching(s.會變層.場景.場景事實, key)
-        s.會變層.場景.空間關係 = _remove_matching(s.會變層.場景.空間關係, key)
-        s.會變層.場景.社會事實 = _remove_matching(s.會變層.場景.社會事實, key)
-    # modify（簡化：當作 add 一條新狀況）
+        for cl in s.会变层.角色.values():
+            cl.身心状况 = _remove_matching(cl.身心状况, key)
+            cl.特殊情况 = _remove_matching(cl.特殊情况, key)
+        s.会变层.场景.场景事实 = _remove_matching(s.会变层.场景.场景事实, key)
+        s.会变层.场景.空间关系 = _remove_matching(s.会变层.场景.空间关系, key)
+        s.会变层.场景.社会事实 = _remove_matching(s.会变层.场景.社会事实, key)
+    # modify（简化：当作 add 一条新状况）
     for d in delta.modify:
-        if d.主體 in s.會變層.角色:
-            s.會變層.角色[d.主體].身心狀況.append(_to_cond(d, turn))
-    # 衍生欄位更新
+        if d.主体 in s.会变层.角色:
+            s.会变层.角色[d.主体].身心状况.append(_to_cond(d, turn))
+    # 衍生字段更新
     for cid, sp in adj.速度更新.items():
-        if cid in s.會變層.角色:
-            s.會變層.角色[cid].行動速度 = sp
+        if cid in s.会变层.角色:
+            s.会变层.角色[cid].行动速度 = sp
     for cid, cap in adj.感知更新.items():
-        if cid in s.會變層.角色:
-            s.會變層.角色[cid].感知能力 = cap
+        if cid in s.会变层.角色:
+            s.会变层.角色[cid].感知能力 = cap
 
 
-# ───────────────── 分發敘事（GM 寫、程式送） ─────────────────
+# ───────────────── 分发叙事（GM 写、程序送） ─────────────────
 def distribute(s: Session, public: str, private: dict) -> None:
-    s.公開日誌.append(public)
-    for cid in s.scene.在場:
+    s.公开日志.append(public)
+    for cid in s.scene.在场:
         msg = private.get(cid) or public
-        s.記憶.setdefault(cid, []).append(msg)
+        s.记忆.setdefault(cid, []).append(msg)
 
 
-# ───────────────── 帳本清理：瞬態 TTL 自動過期 ─────────────────
+# ───────────────── 帐本清理：瞬态 TTL 自动过期 ─────────────────
 def _alive(c: Condition, turn: int) -> bool:
-    if c.剩餘拍數 is None or c.創建回合 is None:
+    if c.剩余拍数 is None or c.创建回合 is None:
         return True
-    return (turn - c.創建回合) < c.剩餘拍數
+    return (turn - c.创建回合) < c.剩余拍数
 
 
 def expire_transients(s: Session) -> None:
-    """移除已到期的瞬態狀態（剩餘拍數用盡）。每拍結束呼叫。"""
-    turn = s.回合數
-    for cl in s.會變層.角色.values():
-        cl.身心狀況 = [c for c in cl.身心狀況 if _alive(c, turn)]
-        cl.特殊情況 = [c for c in cl.特殊情況 if _alive(c, turn)]
-    sc = s.會變層.場景
-    sc.場景事實 = [c for c in sc.場景事實 if _alive(c, turn)]
-    sc.空間關係 = [c for c in sc.空間關係 if _alive(c, turn)]
-    sc.社會事實 = [c for c in sc.社會事實 if _alive(c, turn)]
+    """移除已到期的瞬态状态（剩余拍数用尽）。每拍结束调用。"""
+    turn = s.回合数
+    for cl in s.会变层.角色.values():
+        cl.身心状况 = [c for c in cl.身心状况 if _alive(c, turn)]
+        cl.特殊情况 = [c for c in cl.特殊情况 if _alive(c, turn)]
+    sc = s.会变层.场景
+    sc.场景事实 = [c for c in sc.场景事实 if _alive(c, turn)]
+    sc.空间关系 = [c for c in sc.空间关系 if _alive(c, turn)]
+    sc.社会事实 = [c for c in sc.社会事实 if _alive(c, turn)]
 
 
-# ───────────────── 結束條件 ─────────────────
+# ───────────────── 结束条件 ─────────────────
 def check_end(s: Session) -> Optional[str]:
-    for cid, cl in s.會變層.角色.items():
-        blob = " ".join(c.內容 for c in cl.身心狀況 + cl.特殊情況)
-        if any(k in blob for k in ("死亡", "斃命", "重縛無法脫身", "徹底制伏")):
-            return f"{s.角色卡[cid].名} 已退場：{blob}"
+    for cid, cl in s.会变层.角色.items():
+        blob = " ".join(c.内容 for c in cl.身心状况 + cl.特殊情况)
+        if any(k in blob for k in ("死亡", "毙命", "重缚无法脱身", "彻底制伏")):
+            return f"{s.角色卡[cid].名} 已退场：{blob}"
     return None

@@ -1,10 +1,10 @@
 """FastAPI 入口。
 
-開發：前端 vite dev(5173) 代理到本服務(8100)。
-發佈（單一服務）：先 `cd frontend && npm run build`，本服務即同時供 Vue dist 與 /api，
-只要把這個埠用隧道/雲端公開即可。公開時務必設環境變數 APP_PASSWORD。
+开发：前端 vite dev(5173) 代理到本服务(8100)。
+发布（单一服务）：先 `cd frontend && npm run build`，本服务即同时供 Vue dist 与 /api，
+只要把这个端口用隧道/云端公开即可。公开时务必设环境变量 APP_PASSWORD。
 
-啟動：uvicorn backend.main:app --port 8100
+启动：uvicorn backend.main:app --port 8100
 """
 import logging
 from pathlib import Path
@@ -34,12 +34,12 @@ app.add_middleware(
 
 @app.middleware("http")
 async def password_gate(request: Request, call_next):
-    """設了 APP_PASSWORD 時，/api/*（health 除外）須帶正確 X-App-Password。"""
+    """设了 APP_PASSWORD 时，/api/*（health 除外）须带正确 X-App-Password。"""
     pw = config.APP_PASSWORD
     path = request.url.path
     if pw and path.startswith("/api/") and path != "/api/health":
         if request.headers.get("X-App-Password") != pw:
-            return JSONResponse({"detail": "需要存取密碼"}, status_code=401)
+            return JSONResponse({"detail": "需要访问密码"}, status_code=401)
     return await call_next(request)
 
 
@@ -52,7 +52,7 @@ async def health():
     return {"ok": True, "model": config.GROK_MODEL}
 
 
-# 發佈用：若前端已 build，直接供其 dist（前端與 API 同源，免 CORS）
+# 发布用：若前端已 build，直接供其 dist（前端与 API 同源，免 CORS）
 _dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 if _dist.exists():
     app.mount("/", StaticFiles(directory=str(_dist), html=True), name="frontend")

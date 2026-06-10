@@ -1,7 +1,7 @@
-"""遊戲場次管理：在記憶體持有進行中的 Session，並存檔到 data/games/*.json。
+"""游戏场次管理：在内存持有进行中的 Session，并存盘到 data/games/*.json。
 
-遊玩是「有狀態」的——每個 game_id 對應一個 Session；每次行動後存檔，重啟可續。
-（Session 全可序列化：角色記憶只是字串陣列。）
+游玩是「有状态」的——每个 game_id 对应一个 Session；每次行动后存盘，重启可续。
+（Session 全可串行化：角色记忆只是字符串数组。）
 """
 import json
 import uuid
@@ -61,9 +61,9 @@ def list_games() -> List[dict]:
             d = json.loads(p.read_text(encoding="utf-8"))
             out.append({
                 "game_id": p.stem,
-                "地點": d.get("scene", {}).get("地點", ""),
-                "回合數": d.get("回合數", 0),
-                "結束": d.get("結束"),
+                "地点": d.get("scene", {}).get("地点", ""),
+                "回合数": d.get("回合数", 0),
+                "结束": d.get("结束"),
             })
         except Exception:
             continue
@@ -71,34 +71,34 @@ def list_games() -> List[dict]:
 
 
 def _action_bar(s: Session) -> list:
-    """各角色行動值與預估還要幾拍才行動；最接近行動者排最上面。"""
+    """各角色行动值与预估还要几拍才行动；最接近行动者排最上面。"""
     th = config.ACTION_THRESHOLD
     bars = []
-    for cid in s.scene.在場:
-        cl = s.會變層.角色.get(cid)
+    for cid in s.scene.在场:
+        cl = s.会变层.角色.get(cid)
         if not cl:
             continue
-        速 = max(cl.行動速度, 1)
-        需 = max(th - cl.行動值, 0)
+        速 = max(cl.行动速度, 1)
+        需 = max(th - cl.行动值, 0)
         bars.append({
-            "id": cid, "名": s.角色卡[cid].名, "陣營": s.角色卡[cid].陣營,
-            "行動值": cl.行動值, "速度": cl.行動速度, "門檻": th,
-            "預估拍": (需 + 速 - 1) // 速,
+            "id": cid, "名": s.角色卡[cid].名, "阵营": s.角色卡[cid].阵营,
+            "行动值": cl.行动值, "速度": cl.行动速度, "门槛": th,
+            "预估拍": (需 + 速 - 1) // 速,
         })
-    bars.sort(key=lambda b: (b["預估拍"], -b["行動值"]))
+    bars.sort(key=lambda b: (b["预估拍"], -b["行动值"]))
     return bars
 
 
 def snapshot(gid: str, s: Session) -> dict:
     return {
         "game_id": gid,
-        "回合數": s.回合數,
-        "結束": s.結束,
+        "回合数": s.回合数,
+        "结束": s.结束,
         "pending": s.pending,
-        "公開日誌": s.公開日誌,
-        "在場": [{"id": cid, "名": s.角色卡[cid].名, "陣營": s.角色卡[cid].陣營}
-                 for cid in s.scene.在場 if cid in s.角色卡],
-        "行動條": _action_bar(s),
-        "玩家視圖": engine.build_view(s, "player"),
-        "帳本除錯": engine.ground_truth(s),
+        "公开日志": s.公开日志,
+        "在场": [{"id": cid, "名": s.角色卡[cid].名, "阵营": s.角色卡[cid].阵营}
+                 for cid in s.scene.在场 if cid in s.角色卡],
+        "行动条": _action_bar(s),
+        "玩家视图": engine.build_view(s, "player"),
+        "帐本调试": engine.ground_truth(s),
     }

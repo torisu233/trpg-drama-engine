@@ -1,4 +1,4 @@
-"""共用依賴：惰性建立的 Grok client（整個 app 共用一個）。"""
+"""共用依赖：惰性创建的 Grok client（整个 app 共用一个）。"""
 from typing import Optional
 from .grok_client import GrokClient
 

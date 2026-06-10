@@ -1,4 +1,4 @@
-"""劇本路由：CRUD + 編劇 agent 對話（無狀態——前端持有草稿正本）。"""
+"""剧本路由：CRUD + 编剧 agent 对话（无状态——前端持有草稿正本）。"""
 from fastapi import APIRouter, HTTPException
 from ..models import Scenario
 from .. import scenario as scen, agents
@@ -17,7 +17,7 @@ def get_scenario(sid: str):
     try:
         return scen.load_scenario(sid)
     except FileNotFoundError:
-        raise HTTPException(404, f"找不到劇本 {sid}")
+        raise HTTPException(404, f"找不到剧本 {sid}")
 
 
 @router.put("/scenarios/{sid}")
@@ -33,22 +33,22 @@ def delete_scenario(sid: str):
     if path.exists():
         path.unlink()
         return {"ok": True}
-    raise HTTPException(404, f"找不到劇本 {sid}")
+    raise HTTPException(404, f"找不到剧本 {sid}")
 
 
 @router.post("/author/turn")
 async def author_turn(payload: dict):
     """body: {scenario, history:[{role,text}], message}
-    回傳合併後的整份劇本 + 回覆（前端直接以 scenario 取代草稿）。"""
+    回传合并后的整份剧本 + 回复（前端直接以 scenario 取代草稿）。"""
     sc = Scenario(**payload.get("scenario", {}))
     history = [(h.get("role", ""), h.get("text", "")) for h in payload.get("history", [])]
     message = payload.get("message", "")
     rep = await agents.author_turn(get_grok(), sc, history, message)
-    更新區塊 = scen.apply_author_reply(sc, rep)
+    更新区块 = scen.apply_author_reply(sc, rep)
     return {
         "reply": rep.reply,
         "scenario": sc,
-        "區塊": 更新區塊,
+        "区块": 更新区块,
         "char_id": rep.char_id,
         "missing": rep.missing,
         "done": rep.done,

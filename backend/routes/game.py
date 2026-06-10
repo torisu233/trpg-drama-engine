@@ -1,4 +1,4 @@
-"""遊玩路由：有狀態場次。行動/反應以串流（NDJSON）逐拍推給前端。"""
+"""游玩路由：有状态场次。行动/反应以串流（NDJSON）逐拍推给前端。"""
 import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
@@ -21,7 +21,7 @@ async def new_game(payload: dict):
     try:
         gid, s = game_store.create_game(sid)
     except FileNotFoundError:
-        raise HTTPException(404, f"找不到劇本 {sid}")
+        raise HTTPException(404, f"找不到剧本 {sid}")
     await flow.advance(get_grok(), s)
     game_store.save_game(gid, s)
     return game_store.snapshot(gid, s)
@@ -31,7 +31,7 @@ async def new_game(payload: dict):
 def get_game(gid: str):
     s = game_store.get_game(gid)
     if not s:
-        raise HTTPException(404, f"找不到遊戲 {gid}")
+        raise HTTPException(404, f"找不到游戏 {gid}")
     return game_store.snapshot(gid, s)
 
 
@@ -39,11 +39,11 @@ def get_game(gid: str):
 def delete_game(gid: str):
     if game_store.delete_game(gid):
         return {"ok": True}
-    raise HTTPException(404, f"找不到遊戲 {gid}")
+    raise HTTPException(404, f"找不到游戏 {gid}")
 
 
 def _stream(gid: str, s, gen):
-    """把 flow 的串流產生器逐拍包成 NDJSON（每拍一行 snapshot），並逐拍存檔。"""
+    """把 flow 的串流产生器逐拍包成 NDJSON（每拍一行 snapshot），并逐拍存盘。"""
     async def body():
         async for sess in gen:
             game_store.save_game(gid, sess)
@@ -55,8 +55,8 @@ def _stream(gid: str, s, gen):
 async def action(gid: str, payload: dict):
     s = game_store.get_game(gid)
     if not s:
-        raise HTTPException(404, f"找不到遊戲 {gid}")
-    if s.結束:
+        raise HTTPException(404, f"找不到游戏 {gid}")
+    if s.结束:
         return JSONResponse(game_store.snapshot(gid, s))
     return _stream(gid, s, flow.stream_action(get_grok(), s, payload.get("action", {})))
 
@@ -65,7 +65,7 @@ async def action(gid: str, payload: dict):
 async def react(gid: str, payload: dict):
     s = game_store.get_game(gid)
     if not s:
-        raise HTTPException(404, f"找不到遊戲 {gid}")
-    if s.結束:
+        raise HTTPException(404, f"找不到游戏 {gid}")
+    if s.结束:
         return JSONResponse(game_store.snapshot(gid, s))
     return _stream(gid, s, flow.stream_reaction(get_grok(), s, payload.get("reaction", {})))

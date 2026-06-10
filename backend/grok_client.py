@@ -1,7 +1,7 @@
-"""Grok 客戶端：openai SDK（指向 x.ai）+ instructor。
+"""Grok 客户端：openai SDK（指向 x.ai）+ instructor。
 
-instructor 的 max_retries 提供「結構化輸出驗證失敗時自動把錯誤回饋給模型重問」的保險，
-讓四個 agent 的 JSON 輸出更穩。對外維持與舊版相同的 call() 介面，上層程式無需改動。
+instructor 的 max_retries 提供「结构化输出验证失败时自动把错误回馈给模型重问」的保险，
+让四个 agent 的 JSON 输出更稳。对外维持与旧版相同的 call() 接口，上层程序无需改动。
 """
 import os
 import logging
@@ -23,10 +23,10 @@ class GrokClient:
         api_key = os.getenv("GROK_API_KEY")
         base_url = os.getenv("GROK_API_BASE_URL", "https://api.x.ai/v1")
         if not api_key:
-            raise ValueError("GROK_API_KEY 未設定，請在 .env 配置")
-        # x.ai 與 OpenAI API 相容
+            raise ValueError("GROK_API_KEY 未设置，请在 .env 配置")
+        # x.ai 与 OpenAI API 兼容
         self._raw = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
-        # JSON 模式：強制 json_object 輸出 + Pydantic 驗證；失敗自動重問
+        # JSON 模式：强制 json_object 输出 + Pydantic 验证；失败自动重问
         self.client = instructor.from_openai(self._raw, mode=instructor.Mode.JSON)
         self.max_retries = max_retries
         self.model_default = os.getenv("GROK_MODEL", "grok-3")
@@ -39,7 +39,7 @@ class GrokClient:
         max_tokens: int = 2000,
         model: str = "",
     ) -> T:
-        """呼叫 Grok，回傳經 Pydantic 驗證的結構化物件；驗證失敗會自動重問。"""
+        """调用 Grok，回传经 Pydantic 验证的结构化对象；验证失败会自动重问。"""
         try:
             return await self.client.chat.completions.create(
                 model=model or self.model_default,
@@ -50,8 +50,8 @@ class GrokClient:
                 max_retries=self.max_retries,
             )
         except Exception as e:
-            logger.error(f"[Grok] {schema.__name__} 呼叫/驗證失敗: {e}")
-            raise GrokError(f"Grok 呼叫/驗證失敗（{schema.__name__}）: {e}") from e
+            logger.error(f"[Grok] {schema.__name__} 调用/验证失败: {e}")
+            raise GrokError(f"Grok 调用/验证失败（{schema.__name__}）: {e}") from e
 
     async def close(self):
         await self._raw.close()

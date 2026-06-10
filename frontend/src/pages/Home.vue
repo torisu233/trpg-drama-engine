@@ -1,34 +1,34 @@
 <template>
   <div>
     <div class="row-between">
-      <h2>劇本集</h2>
-      <button @click="create">＋ 新建劇本</button>
+      <h2>剧本集</h2>
+      <button @click="create">＋ 新建剧本</button>
     </div>
     <div class="cards">
       <div class="card" v-for="id in s.list" :key="id">
         <div class="card-title">{{ id }}</div>
         <div class="card-actions">
-          <router-link :to="'/author/' + id">編輯</router-link>
+          <router-link :to="'/author/' + id">编辑</router-link>
           <button @click="play(id)" :disabled="!!starting">
-            {{ starting === id ? '載入中…' : '遊玩' }}
+            {{ starting === id ? '加载中…' : '游玩' }}
           </button>
-          <button class="mini" @click="delScenario(id)">刪除</button>
+          <button class="mini" @click="delScenario(id)">删除</button>
         </div>
       </div>
-      <div v-if="!s.list.length" class="muted">（還沒有劇本，點「新建劇本」開始）</div>
+      <div v-if="!s.list.length" class="muted">（还没有剧本，点「新建剧本」开始）</div>
     </div>
 
-    <h2>進行中的遊戲</h2>
+    <h2>进行中的游戏</h2>
     <div class="cards">
       <div class="card" v-for="g in game.games" :key="g.game_id">
-        <div class="card-title">{{ g.地點 || g.game_id }}</div>
-        <div class="muted">第 {{ g.回合數 }} 拍{{ g.結束 ? ' · 已結束' : '' }}</div>
+        <div class="card-title">{{ g.地点 || g.game_id }}</div>
+        <div class="muted">第 {{ g.回合数 }} 拍{{ g.结束 ? ' · 已结束' : '' }}</div>
         <div class="card-actions">
-          <router-link :to="'/play/' + g.game_id">續玩</router-link>
-          <button class="mini" @click="delGame(g.game_id)">刪除</button>
+          <router-link :to="'/play/' + g.game_id">续玩</router-link>
+          <button class="mini" @click="delGame(g.game_id)">删除</button>
         </div>
       </div>
-      <div v-if="!game.games.length" class="muted">（無）</div>
+      <div v-if="!game.games.length" class="muted">（无）</div>
     </div>
   </div>
 </template>
@@ -54,18 +54,18 @@ async function play(id) {
     const snap = await game.start(id)
     router.push('/play/' + snap.game_id)
   } catch (e) {
-    alert('開始失敗：' + e.message)
+    alert('开始失败：' + e.message)
   } finally {
     starting.value = ''
   }
 }
 
 async function delScenario(id) {
-  if (!confirm(`刪除劇本「${id}」？`)) return
-  try { await s.remove(id) } catch (e) { alert('刪除失敗：' + e.message) }
+  if (!confirm(`删除剧本「${id}」？`)) return
+  try { await s.remove(id) } catch (e) { alert('删除失败：' + e.message) }
 }
 async function delGame(gid) {
-  if (!confirm('刪除這局遊戲紀錄？')) return
-  try { await game.remove(gid) } catch (e) { alert('刪除失敗：' + e.message) }
+  if (!confirm('删除这局游戏纪录？')) return
+  try { await game.remove(gid) } catch (e) { alert('删除失败：' + e.message) }
 }
 </script>

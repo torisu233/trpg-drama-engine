@@ -4,7 +4,7 @@
       <input :value="item" @input="upd(i, $event.target.value)" :placeholder="ph" />
       <button class="mini" type="button" @click="rm(i)">✕</button>
     </div>
-    <button class="mini" type="button" @click="add">＋ {{ label || '新增' }}</button>
+    <button class="mini" type="button" @click="add">＋ {{ label || '添加' }}</button>
   </div>
 </template>
 
