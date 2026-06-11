@@ -1,5 +1,7 @@
 # TRPG 原型 · 戏剧引擎跑团
 
+[![CI](https://github.com/torisu233/trpg-drama-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/torisu233/trpg-drama-engine/actions/workflows/ci.yml)
+
 依 [`docs/设计文档.md`](docs/设计文档.md) 的**戏剧引擎**（状态帐本 + LLM 裁决取代骰子数值）做的多 agent 跑团原型。两大功能：**剧本设计**（编剧 agent）与**实际游玩**。
 
 ## 架构
