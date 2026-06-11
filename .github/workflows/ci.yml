@@ -27,3 +27,33 @@ jobs:
       #    测试本就不真的呼叫 Grok，所以 CI 不必持有任何密钥（安全）。
       - name: 跑 pytest
         run: pytest
+
+  # 测试过了、且是 master 时：build Docker 镜像并推到 ECR（App Runner 之后自动拉 latest）
+  build-and-push:
+    name: build & push 到 ECR
+    needs: test                              # 测试不过就不 build
+    if: github.ref == 'refs/heads/master'    # PR / 其他分支只跑 test
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write                        # 用 OIDC 换 AWS 临时凭证（无长期密钥）
+      contents: read
+    env:
+      AWS_REGION: ap-northeast-1
+      ECR_REPO: <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-1.amazonaws.com/torisu233/trpg
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 经 OIDC 取得 AWS 临时凭证
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/github-actions-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 登录 ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: build + push（tag：latest 与 git sha）
+        run: |
+          docker build -t "$ECR_REPO:latest" -t "$ECR_REPO:${{ github.sha }}" .
+          docker push "$ECR_REPO:latest"
+          docker push "$ECR_REPO:${{ github.sha }}"
