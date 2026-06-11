@@ -7,6 +7,14 @@ __pycache__/
 *.pyc
 *.pyo
 
+# 测试覆盖率资料档（pytest-cov 产物）
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Claude Code 本地工具设定
+.claude/
+
 # 執行期資料/日誌
 data/
 *.log

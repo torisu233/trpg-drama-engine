@@ -19,11 +19,11 @@ backend/
   deps.py       共用 Grok client
   game_store.py 游戏场次 + JSON 存盘
   routes/       scenarios.py（CRUD+编剧）, game.py（游玩）
-  ── 测试 / 诊断 ──
-  smoke_test.py  纯逻辑回归(10项)     api_smoke.py   脱机 API（TestClient，自带酒馆 fixture）
-  stream_test.py 串流逐拍验证(live)   mode_test.py   非战斗模式验证(live)
-  author_test.py 编剧 agent 验证(live)
   scene.py       in-code 酒馆 session（脱机测试 fixture）
+  ── live 诊断脚本（会打 Grok，不在 CI）──
+  stream_test.py 串流逐拍验证   mode_test.py 非战斗模式验证   author_test.py 编剧 agent 验证
+tests/          pytest 套件（离线，CI 跑这个）
+  conftest.py（夹具）test_engine/test_flow/test_scenario/test_api.py
 scenarios/      剧本（编剧产物，版控）  *.json
 data/games/     游戏存盘（运行期，gitignore）  *.json
 frontend/       Vue 3 SPA（Vite+Pinia+Router）：剧本集 / 编剧页 / 游玩页
@@ -55,10 +55,10 @@ npm run dev        # http://localhost:5173 （/api 自动代理到 8100）
 两个都跑着，浏览器开 **http://localhost:5173**：剧本集 → 新建/编辑（聊天+面板）→ 游玩。
 （游玩与编剧都只走前后端；已无命令行入口。）
 
-**测试**
+**测试**（pytest，离线、不打 Grok）
 ```powershell
-.\.venv\Scripts\python.exe -m backend.smoke_test   # 纯逻辑 10 项
-.\.venv\Scripts\python.exe -m backend.api_smoke     # 脱机 API（不打 grok）
+.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # 首次：装 pytest/pytest-cov
+.\.venv\Scripts\python.exe -m pytest                                # 跑全套 + 覆盖率
 ```
 
 ## 临时分享到公网（Cloudflare 隧道，免注册）
@@ -130,6 +130,11 @@ snapshot = `{game_id, 回合数, 结束, pending, 公开日志, 在场, 行动�
 - [x] 后端 API 化（编剧无状态 / 游玩有状态 + JSON 存盘）
 - [x] Vue 3 前端：剧本集（可删）/ 编剧页 / 游玩页
 - [x] 游玩逐拍串流显示 + 实时行动条（单行胶囊）
-- [x] 一键公网分享（Cloudflare 隧道 + 密码闸）
+- [x] 一键公网分享（Cloudflare 隧道 / ngrok 固定网址 + 密码闸）
+- [x] 玩家视图/角色面板（我方详尽·敌方隐藏）+ 结构化逐拍日志
+- [x] 站内密码登入页（取代被部分手机封锁的 window.prompt）
+- [x] pytest 测试套件（单元+集成，离线、~70% 覆盖）
+- [ ] GitHub Actions CI（push 跑 pytest + build）
+- [ ] Docker 化（多阶段 Dockerfile）
+- [ ] 上云 24/7：AWS App Runner 部署
 - [ ] 批量叙事（多 NPC 拍揉成一段，文气更佳）
-- [ ] 上云 24/7 部署（目前为临时隧道）
