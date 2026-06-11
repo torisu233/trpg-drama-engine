@@ -1,0 +1,29 @@
+name: CI
+
+# 触发：推送到任何分支、或开 Pull Request 时都跑——坏了马上知道。
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: pytest (离线)
+    runs-on: ubuntu-latest          # GitHub 提供的一台全新 Linux 机器
+    steps:
+      # 1) 把仓库 clone 进这台机器
+      - uses: actions/checkout@v4
+
+      # 2) 装 Python；cache:pip 把依赖缓存起来，第二次跑更快
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      # 3) 装依赖（含 pytest / pytest-cov；-r requirements-dev.txt 内含 -r requirements.txt）
+      - name: 安装依赖
+        run: pip install -r requirements-dev.txt
+
+      # 4) 跑测试。离线、不需要 GROK_API_KEY——conftest.py 设了 dummy key，
+      #    测试本就不真的呼叫 Grok，所以 CI 不必持有任何密钥（安全）。
+      - name: 跑 pytest
+        run: pytest
