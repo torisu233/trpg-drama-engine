@@ -41,7 +41,7 @@ APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://trpg:trpg@localhost:5433/trpg")
 
 # ── Auth ──
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-insecure-change-me")   # 云端务必设随机值
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-insecure-secret-change-in-production-please")   # ≥32 字节；云端务必设真随机值
 JWT_TTL_DAYS = int(os.getenv("JWT_TTL_DAYS", "7"))
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")                 # 设了才 seed admin

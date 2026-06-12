@@ -16,12 +16,15 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, deps
 from .routes import scenarios, game
+from .routes import auth as auth_routes
+from .auth import seed_admin
 
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL, logging.INFO))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    seed_admin()   # 开机幂等 seed admin（仅当设了 ADMIN_PASSWORD）
     yield
     await deps.close_grok()
 
@@ -34,17 +37,18 @@ app.add_middleware(
 
 @app.middleware("http")
 async def password_gate(request: Request, call_next):
-    """设了 APP_PASSWORD 时，/api/*（health 除外）须带正确 X-App-Password。"""
+    """旧密码闸（将被 auth 取代）：设了 APP_PASSWORD 时，/api/*（health 与 auth 除外）须带 X-App-Password。"""
     pw = config.APP_PASSWORD
     path = request.url.path
-    if pw and path.startswith("/api/") and path != "/api/health":
+    if pw and path.startswith("/api/") and path != "/api/health" and not path.startswith("/api/auth"):
         if request.headers.get("X-App-Password") != pw:
             return JSONResponse({"detail": "需要访问密码"}, status_code=401)
     return await call_next(request)
 
 
-app.include_router(scenarios.router)   # /api/scenarios*, /api/author/turn
-app.include_router(game.router)        # /api/games, /api/game/*
+app.include_router(auth_routes.router)  # /api/auth/register, /login, /me
+app.include_router(scenarios.router)    # /api/scenarios*, /api/author/turn
+app.include_router(game.router)         # /api/games, /api/game/*
 
 
 @app.get("/api/health")
