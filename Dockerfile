@@ -22,6 +22,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY scenarios/ ./scenarios/
 COPY --from=frontend /app/frontend/dist ./frontend/dist
+# 数据库迁移：启动时 alembic upgrade head 需要这两个（env.py 走 backend.config 的 DATABASE_URL）
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 
 # 非 root 运行（最小权限）
 RUN useradd -m app && chown -R app /app
@@ -35,6 +38,10 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8080')+'/api/health')" || exit 1
 
-# exec 形式（JSON）才能正确传递 OS 信号；用 sh -c + exec：既展开 ${PORT}，
-# 又让 uvicorn 取代 shell 成为主进程，直接收到 SIGTERM（关闭干净、对 App Runner 友好）。
-CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# 启动先跑迁移再起服务：
+# - alembic upgrade head：空库自动建表、已最新则跳过（幂等，重启/重部署都安全）。
+#   失败（如 DB 连不上）即退出 → ECS 重启重试，日志可见原因。
+# - exec uvicorn：让 uvicorn 取代 shell 成为主进程，直接收 SIGTERM（关闭干净）。
+#   ${PORT} 由 ECS Express 注入（容器端口 8080）。
+# 注：单任务（Express 默认 minTask=1）无并发迁移竞争；将来多任务需另设迁移闸。
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
