@@ -33,6 +33,15 @@ TEMP_CHARACTER = 0.85         # 角色要有个性
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 
-# ── 公开访问密码闸 ──
-# 设了才激活：/api/* 须带 header X-App-Password 比对。公开（隧道/上云）时务必设！
+# ── 公开访问密码闸（旧；将被 auth 取代）──
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+
+# ── 数据库 ──
+# 本地默认 SQLite（零设置）；云端设 DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/db 指向 RDS
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./trpg.db")
+
+# ── Auth ──
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-insecure-change-me")   # 云端务必设随机值
+JWT_TTL_DAYS = int(os.getenv("JWT_TTL_DAYS", "7"))
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")                 # 设了才 seed admin
