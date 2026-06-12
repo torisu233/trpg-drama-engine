@@ -11,6 +11,7 @@ import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import config
@@ -68,17 +69,20 @@ def current_admin(user: User = Depends(current_user)) -> User:
     return user
 
 
-# ── seed admin（开机幂等；仅当设了 ADMIN_PASSWORD）──
+# ── seed admin（first-run bootstrap：仅当用户表为空时，从 env 创建初始 admin）──
 def seed_admin() -> None:
+    """全新空库首次启动时建一个 admin（来自 env）；之后有任何用户即不再自动 seed。"""
     if not config.ADMIN_PASSWORD:
         return
     db = SessionLocal()
     try:
-        if db.query(User).filter(User.username == config.ADMIN_USERNAME).first():
+        if db.query(User.id).first() is not None:   # 已有用户 → 非首次，跳过
             return
         db.add(User(username=config.ADMIN_USERNAME,
                     password_hash=hash_password(config.ADMIN_PASSWORD),
                     is_admin=True))
         db.commit()
+    except IntegrityError:                          # 并发启动：另一实例已 seed
+        db.rollback()
     finally:
         db.close()
