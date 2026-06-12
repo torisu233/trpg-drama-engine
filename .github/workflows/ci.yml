@@ -7,8 +7,25 @@ on:
 
 jobs:
   test:
-    name: pytest (离线)
+    name: pytest (离线 + Postgres)
     runs-on: ubuntu-latest          # GitHub 提供的一台全新 Linux 机器
+    # 集成测试连真 Postgres（dev/prod 一致）：起一个临时 PG service container，
+    # 映射到 host 5433（对齐本地 docker-compose 与 conftest 默认 DATABASE_URL）。
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: trpg
+          POSTGRES_PASSWORD: trpg
+          POSTGRES_DB: trpg        # conftest 连此库 CREATE DATABASE trpg_test
+        ports:
+          - 5433:5432
+        # 等 PG 真的就绪再跑步骤，避免连接竞态
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       # 1) 把仓库 clone 进这台机器
       - uses: actions/checkout@v4
@@ -23,8 +40,8 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements-dev.txt
 
-      # 4) 跑测试。离线、不需要 GROK_API_KEY——conftest.py 设了 dummy key，
-      #    测试本就不真的呼叫 Grok，所以 CI 不必持有任何密钥（安全）。
+      # 4) 跑测试。不打 Grok（conftest 设 dummy key），故 CI 不必持有 Grok 密钥；
+      #    集成测试连上面的 PG service（conftest 默认 DATABASE_URL 即 localhost:5433/trpg_test）。
       - name: 跑 pytest
         run: pytest
 
