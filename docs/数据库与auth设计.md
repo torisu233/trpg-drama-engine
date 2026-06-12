@@ -53,3 +53,11 @@
 5. **前端**：登录/注册 + Bearer + 整数 id + admin 显示持有者。
 6. **测试**：DB fixture（连本地 docker PG 的测试库）+ auth fixture，重写 test_api/test_scenario；CI 加 `services: postgres` 容器跑测试（与生产同引擎）。
 7.（之后）RDS + 注入新 env + 部署。
+
+## 后续功能（Part 2 之后，已实现）
+- **复制剧本**：`POST /api/scenarios/{sid}/copy` —— 校验可读(published/自己/admin)→ 克隆为我的 `private` 副本（标题加「（副本）」）。无新表。
+- **改密码**：`POST /api/auth/change-password {old_password,new_password}` —— 先验旧密码再存新哈希；JWT 无状态、不含密码，改后旧 token 仍有效到期。
+- **反馈聊天**（第 4 张表）：**feedback_messages** —— `id`(PK) · `thread_user_id`(FK users，会话属于哪个普通用户) · `sender_is_admin`(bool) · `body`(text) · `is_read`(bool，admin 是否已读该用户消息) · `created_at`。一普通用户一条会话线、统一对「admin」。
+  - 用户端 `GET/POST /api/feedback`（`current_user`，只碰自己那条线）；admin 端 `GET /api/feedback/threads`（列表+未读）、`GET /api/feedback/{user_id}`（读并标已读）、`POST /api/feedback/{user_id}`（回复），皆 `current_admin`。**权限全在后端，前端按角色显示入口只是 UX。**
+  - 前端统一独立页面：用户 `/feedback`、admin `/admin/feedback`（左用户列表+右对话），共用 `ChatThread` 组件；打开载入 + 8 秒轮询（无 websocket，小规模够用）。
+  - 新迁移 `f159fc1ec85e_feedback_messages`；云端靠容器启动 `alembic upgrade head` 自动建表。

@@ -91,6 +91,7 @@ docker compose up -d --wait        # 集成测试连真 PG（独立测试库 trp
 | POST | `/api/auth/register` | `{username,password}` → `{token,username,is_admin}` |
 | POST | `/api/auth/login` | 同上 |
 | GET | `/api/auth/me` | 当前用户 |
+| POST | `/api/auth/change-password` | `{old_password,new_password}`（验旧密码→存新哈希） |
 
 **剧本／编剧**（剧本 id 为整数；private/published 可见性 + 拥有权）
 | 方法 | 路径 | 作用 |
@@ -98,6 +99,7 @@ docker compose up -d --wait        # 集成测试连真 PG（独立测试库 trp
 | GET | `/api/scenarios` | 列出（published 或自己的；admin 看全部） |
 | GET | `/api/scenarios/{id}` | 读一份（含 content） |
 | POST | `/api/scenarios` | 新建 `{scenario, visibility}` → `{id,...}` |
+| POST | `/api/scenarios/{id}/copy` | 克隆可读剧本为我的私人副本（在别人发布的剧本上改） |
 | PUT | `/api/scenarios/{id}` | 覆写（仅作者/admin） |
 | DELETE | `/api/scenarios/{id}` | 软删除（仅作者/admin） |
 | POST | `/api/author/turn` | 编剧对话：`{scenario,history,message}` → `{reply, scenario(已合并), 区块, missing, done}` |
@@ -114,6 +116,14 @@ docker compose up -d --wait        # 集成测试连真 PG（独立测试库 trp
 
 snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构化逐拍), 在场, 行动条, 局面, 角色(我方详尽/敌方隐藏), 帐本调试}`。
 
+**反馈聊天**（用户↔admin；一用户一会话线，统一独立页面 `/feedback`、`/admin/feedback`）
+| 方法 | 路径 | 作用 |
+|---|---|---|
+| GET/POST | `/api/feedback` | 用户读/发自己那条会话（`current_user`） |
+| GET | `/api/feedback/threads` | admin：所有会话列表 + 未读数（`current_admin`） |
+| GET | `/api/feedback/{user_id}` | admin：读某用户会话（打开即标已读） |
+| POST | `/api/feedback/{user_id}` | admin：回复某用户 |
+
 ## 路线图
 - [x] 内核戏剧引擎（行动条/两轴/裁决/叙事/迷雾/摘要/帐本整理）
 - [x] 世界观法则 + 双用角色卡（含秘密弱点）+ 社会事实长期记忆
@@ -126,4 +136,6 @@ snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构�
 - [x] **git push → 全自动上云**：CI 经 OIDC build→推 ECR→部署 AWS ECS Express（见 [`docs/部署.md`](docs/部署.md)）
 - [x] JSON → PostgreSQL/SQLAlchemy + Alembic（云端 RDS 持久化）
 - [x] 用户 auth 登入（注册/登录 + JWT，取代共享密码）
+- [x] 复制别人发布的剧本来改；用户菜单（改密码 + 显示密码切换）
+- [x] 反馈聊天（用户↔admin，统一独立页面 + 未读标记 + 8 秒轮询）
 - [ ] 批量叙事（多 NPC 拍揉成一段，文气更佳）
