@@ -31,13 +31,13 @@ Postgres service container（见 `.github/workflows/ci.yml` test job）。纯逻
 ## 用的技术 + 注意点
 - **fixtures**：靠参数名注入，别手动 import；默认 **function 级**（每测一份新的，互不污染），别贪快改 session 级。
 - **`@pytest.mark.parametrize`**：表格化多组输入，各自报告；中文值用 `ids=` 给可读名。
-- **`monkeypatch`**：打桩**测完自动还原**——改 `config.APP_PASSWORD` 必须用它（直接 `os.environ` 会漏给别的测试）。
+- **`monkeypatch`**：打桩**测完自动还原**——改模块级状态（如 `config` 常数、`deps._grok`）必须用它（直接 `os.environ` 会漏给别的测试）。
 - **`TestClient`**：in-process 跑真实 app（中间件+路由），不起服务器。**不用 `with`**＝不进 lifespan，故测试时不触发 seed，自己掌控数据。
 - **DB 测试隔离**：独立测试库 + 每个 DB 测试取 `db` 夹具时 `TRUNCATE ... RESTART IDENTITY CASCADE`＝干净起点、自增 id 可预测。**不用** SQLite（与生产 PG 行为不一致），**不用**事务回滚（串流端点自开新连接，跨连接回滚不可靠）。
 - **鉴权夹具**：`make_user(admin=?)` 工厂直接造库+`create_token` 发 Bearer，可造普通/管理员；测试授权要覆盖 401（未登录）/403（无权）/404（不泄露存在性）三种边界。
 - **`is` 只用于 `True/False/None`**（单例身分比较），别用来比字串/数字。
 - **随机**（`roll_luck`）不测结果、只测周围确定性分支。
-- 本专案的模块级共享状态（`deps._grok` / `config.APP_PASSWORD`）动了要还原（用 `monkeypatch`）。游戏已纯 DB、无内存缓存。
+- 本专案的模块级共享状态（如 `deps._grok`）动了要还原（用 `monkeypatch`）。游戏已纯 DB、无内存缓存。
 
 ## 维护工作流（频繁改项目时）
 1. 改码 → `pytest` → 红了吗？
