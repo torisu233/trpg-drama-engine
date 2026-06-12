@@ -72,6 +72,32 @@ details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; p
 .loginbox h2 { margin-top: 0; }
 .loginbox input { margin-top: 10px; font-size: 16px; padding: 12px; }  /* 16px 防 iOS 聚焦放大 */
 .loginbox button { width: 100%; padding: 12px; font-size: 15px; }
+.loginbox .pwwrap { margin-top: 10px; }
+.loginbox .pwwrap input { margin-top: 0; }
+
+/* 密码输入 + 显示/隐藏切换（登录页与改密码框共用）*/
+.pwwrap { position: relative; }
+.pwwrap input { padding-right: 56px; }
+.pwtoggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: transparent; color: var(--muted); border: 0; padding: 4px 6px; font-size: 12px; cursor: pointer; }
+.pwtoggle:hover { color: var(--gold); background: transparent; }
+
+/* 右上角用户菜单 */
+.usermenu { position: relative; }
+.userbtn { background: transparent; color: var(--ink); border: 1px solid var(--line);
+  padding: 5px 10px; font-size: 13px; border-radius: 6px; }
+.userbtn:hover { background: #2a2820; }
+.menu-backdrop { position: fixed; inset: 0; z-index: 40; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 140px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px;
+  display: flex; flex-direction: column; }
+.menu a { padding: 7px 10px; border-radius: 6px; color: var(--ink); font-size: 14px; }
+.menu a:hover { background: #2a2820; color: var(--gold); }
+
+/* 模态框（改密码 / 反馈等）*/
+.modal-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal { width: 100%; max-width: 360px; max-height: 90vh; overflow-y: auto; }
 /* 你的局面（置顶常驻）*/
 .situ { font-size: 13px; padding: 9px 12px; }
 .situ-line { padding: 1px 0; }

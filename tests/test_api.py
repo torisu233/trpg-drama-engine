@@ -70,6 +70,28 @@ def test_me_requires_auth(client, headers, expected):
     assert client.get("/api/auth/me", headers=headers or {}).status_code == expected
 
 
+def test_change_password(client, make_user):
+    """改密码：旧密码错→400；新密码太短→400；正确→200，且旧密码失效、新密码可登。"""
+    _, h = make_user("carol", password="oldpass1")
+    # 旧密码错
+    assert client.post("/api/auth/change-password",
+                       json={"old_password": "WRONG", "new_password": "newpass1"}, headers=h).status_code == 400
+    # 新密码太短
+    assert client.post("/api/auth/change-password",
+                       json={"old_password": "oldpass1", "new_password": "123"}, headers=h).status_code == 400
+    # 正确
+    assert client.post("/api/auth/change-password",
+                       json={"old_password": "oldpass1", "new_password": "newpass1"}, headers=h).status_code == 200
+    # 旧密码登不上、新密码能登
+    assert client.post("/api/auth/login", json={"username": "carol", "password": "oldpass1"}).status_code == 401
+    assert client.post("/api/auth/login", json={"username": "carol", "password": "newpass1"}).status_code == 200
+
+
+def test_change_password_requires_auth(client):
+    assert client.post("/api/auth/change-password",
+                       json={"old_password": "a", "new_password": "newpass1"}).status_code == 401
+
+
 # ───────────────── 剧本：鉴权 + CRUD + 可见性 + 拥有权 ─────────────────
 def test_scenarios_require_auth(client):
     assert client.get("/api/scenarios").status_code == 401

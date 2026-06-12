@@ -48,3 +48,20 @@ def login(body: Credentials, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(user: User = Depends(current_user)):
     return {"id": user.id, "username": user.username, "is_admin": user.is_admin}
+
+
+class ChangePassword(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+def change_password(body: ChangePassword, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """改密码：先验旧密码（防登录态被人改密码），再存新哈希。当前 JWT 不含密码，仍有效到期。"""
+    if not verify_password(body.old_password, user.password_hash):
+        raise HTTPException(400, "原密码错误")
+    if len(body.new_password) < 6:
+        raise HTTPException(400, "新密码至少 6 位")
+    user.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"ok": True}

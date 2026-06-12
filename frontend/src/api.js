@@ -55,6 +55,7 @@ export const api = {
   register: (username, password) => post('/api/auth/register', { username, password }),
   login: (username, password) => post('/api/auth/login', { username, password }),
   me: () => j('/api/auth/me'),
+  changePassword: (old_password, new_password) => post('/api/auth/change-password', { old_password, new_password }),
   // 剧本
   listScenarios: () => j('/api/scenarios'),
   getScenario: (id) => j('/api/scenarios/' + id),

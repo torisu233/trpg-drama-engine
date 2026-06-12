@@ -4,8 +4,8 @@
       <h2>{{ mode === 'login' ? '登录' : '注册' }}</h2>
       <p class="muted">{{ mode === 'login' ? '输入账号密码进入。' : '自己填账号和密码即可注册。' }}</p>
       <input v-model="username" placeholder="账号（3–32 位）" autocomplete="username" @keyup.enter="submit" />
-      <input v-model="password" type="password" placeholder="密码（≥6 位）"
-             autocomplete="current-password" @keyup.enter="submit" />
+      <PasswordInput v-model="password" placeholder="密码（≥6 位）"
+                     :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" @enter="submit" />
       <div v-if="err" class="threat" style="margin-top:8px">{{ err }}</div>
       <button style="margin-top:10px" @click="submit" :disabled="busy">
         {{ busy ? '…' : (mode === 'login' ? '登录' : '注册') }}
@@ -21,6 +21,7 @@
 import { ref } from 'vue'
 import { auth, setSession } from '../auth'
 import { api } from '../api'
+import PasswordInput from './PasswordInput.vue'
 
 const mode = ref('login')
 const username = ref('')
