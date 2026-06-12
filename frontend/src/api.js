@@ -61,6 +61,7 @@ export const api = {
   createScenario: (body) => post('/api/scenarios', body),         // {scenario, visibility}
   updateScenario: (id, body) => put('/api/scenarios/' + id, body),
   delScenario: (id) => j('/api/scenarios/' + id, { method: 'DELETE' }),
+  copyScenario: (id) => post('/api/scenarios/' + id + '/copy'),   // 克隆为我的私人副本
   authorTurn: (scenario, history, message) => post('/api/author/turn', { scenario, history, message }),
   // 游玩
   listGames: () => j('/api/games'),

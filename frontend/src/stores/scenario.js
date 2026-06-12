@@ -72,5 +72,10 @@ export const useScenarioStore = defineStore('scenario', {
       await api.delScenario(id)
       await this.refreshList()
     },
+    async copy(id) {
+      const r = await api.copyScenario(id)   // 服务端克隆为我的私人副本
+      await this.refreshList()
+      return r.id
+    },
   },
 })

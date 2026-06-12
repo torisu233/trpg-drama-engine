@@ -16,6 +16,9 @@
           <button @click="play(sc.id)" :disabled="!!starting">
             {{ starting === sc.id ? '加载中…' : '游玩' }}
           </button>
+          <button v-if="!sc.is_mine" class="mini" @click="copyScenario(sc.id)" :disabled="copying === sc.id">
+            {{ copying === sc.id ? '复制中…' : '复制改编' }}
+          </button>
           <button v-if="sc.is_mine || admin" class="mini" @click="delScenario(sc.id, sc.title)">删除</button>
         </div>
       </div>
@@ -50,6 +53,7 @@ const s = useScenarioStore()
 const game = useGameStore()
 const router = useRouter()
 const starting = ref(null)
+const copying = ref(null)
 const admin = computed(() => !!(auth.user && auth.user.is_admin))
 
 onMounted(() => { s.refreshList(); game.refreshGames() })
@@ -65,6 +69,18 @@ async function play(id) {
     alert('开始失败：' + e.message)
   } finally {
     starting.value = null
+  }
+}
+
+async function copyScenario(id) {
+  copying.value = id
+  try {
+    const newId = await s.copy(id)
+    router.push('/author/' + newId)   // 跳到副本编辑页
+  } catch (e) {
+    alert('复制失败：' + e.message)
+  } finally {
+    copying.value = null
   }
 }
 

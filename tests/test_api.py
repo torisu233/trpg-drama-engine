@@ -126,6 +126,33 @@ def test_scenario_admin_sees_all_with_author(client, make_user, admin_headers):
     assert row["author"] == "alice" and row["is_mine"] is False
 
 
+def test_scenario_copy(client, make_user):
+    """复制别人的已发布剧本 → 得到我的私人副本（内容一致、归属转移、可见性 private）。"""
+    _, a = make_user("alice")
+    _, b = make_user("bob")
+    sid = client.post("/api/scenarios", json=_scenario_body("原作", "published"), headers=a).json()["id"]
+
+    cp = client.post(f"/api/scenarios/{sid}/copy", headers=b)
+    assert cp.status_code == 200
+    new_id = cp.json()["id"]
+    assert new_id != sid and cp.json()["visibility"] == "private" and "副本" in cp.json()["title"]
+
+    # 副本归 B、内容与原作一致
+    got = client.get(f"/api/scenarios/{new_id}", headers=b).json()
+    assert got["author_id"] is not None
+    assert "scar" in got["content"]["角色卡"]
+    mine = next(s for s in client.get("/api/scenarios", headers=b).json()["scenarios"] if s["id"] == new_id)
+    assert mine["is_mine"]
+
+
+def test_scenario_copy_private_forbidden(client, make_user):
+    """不能复制看不到的私人剧本（读授权边界）。"""
+    _, a = make_user("alice")
+    _, b = make_user("bob")
+    sid = client.post("/api/scenarios", json=_scenario_body("私密"), headers=a).json()["id"]
+    assert client.post(f"/api/scenarios/{sid}/copy", headers=b).status_code == 403
+
+
 def test_scenario_non_owner_cannot_modify(client, make_user):
     _, a = make_user("alice")
     _, b = make_user("bob")

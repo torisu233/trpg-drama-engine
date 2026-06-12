@@ -71,6 +71,23 @@ def create_scenario(body: ScenarioSave, user: User = Depends(current_user), db: 
     return {"id": r.id, "title": r.title, "visibility": r.visibility}
 
 
+@router.post("/scenarios/{sid}/copy")
+def copy_scenario(sid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """把一份可读剧本克隆为「我的」私人副本（用于在别人发布的剧本上改）。
+
+    读授权同 get_scenario：published / 自己的 / admin 才可读，否则 403（不可复制看不到的私人剧本）。
+    """
+    src = _row_or_404(db, sid)
+    if not (user.is_admin or src.visibility == "published" or src.author_id == user.id):
+        raise HTTPException(403, "无权复制该剧本")
+    title = ((src.title or "未命名剧本") + "（副本）")[:120]
+    r = DBScenario(title=title, author_id=user.id, visibility="private", content=src.content)
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    return {"id": r.id, "title": r.title, "visibility": r.visibility}
+
+
 @router.put("/scenarios/{sid}")
 def update_scenario(sid: int, body: ScenarioSave, user: User = Depends(current_user), db: Session = Depends(get_db)):
     r = _row_or_404(db, sid)
