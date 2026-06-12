@@ -1,75 +1,83 @@
-"""游戏场次管理：在内存持有进行中的 Session，并存盘到 data/games/*.json。
+"""游戏场次：存在 DB（games.state JSON 列），绑 user_id。
 
-游玩是「有状态」的——每个 game_id 对应一个 Session；每次行动后存盘，重启可续。
-（Session 全可串行化：角色记忆只是字符串数组。）
+DB 为唯一真相——不再用内存缓存（多 ECS task 才一致）。每请求从 DB 载入 Session、改、存回；
+串流时逐拍存回。游戏永远私人：列/读/删仅本人 / admin。
 """
-import json
 import uuid
-from pathlib import Path
-from typing import Optional, Dict, List, Tuple
 from .models import Session
-from . import scenario as scen, engine, config
-
-GAMES_DIR = Path(__file__).resolve().parent.parent / "data" / "games"
-_cache: Dict[str, Session] = {}
+from .models_db import Game, User
+from . import scenario as scen, config
 
 
 def _new_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
-def create_game(sc) -> Tuple[str, Session]:
-    """从一份 Pydantic Scenario 开一局（剧本由调用方从 DB 取）。"""
+def _dump(s: Session) -> dict:
+    return s.model_dump(mode="json")
+
+
+def create_game(db, sc, user_id: int, scenario_id=None):
+    """从一份 Pydantic Scenario 开一局，写入 DB，绑 user_id。返回 (gid, Session)。"""
     s = scen.session_from_scenario(sc)
     gid = _new_id()
-    _cache[gid] = s
-    save_game(gid, s)
+    db.add(Game(id=gid, user_id=user_id, scenario_id=scenario_id,
+                state=_dump(s), turn_count=s.回合数, ended=s.结束))
+    db.commit()
     return gid, s
 
 
-def get_game(gid: str) -> Optional[Session]:
-    if gid in _cache:
-        return _cache[gid]
-    path = GAMES_DIR / f"{gid}.json"
-    if path.exists():
-        s = Session(**json.loads(path.read_text(encoding="utf-8")))
-        _cache[gid] = s
-        return s
-    return None
+def load_game(db, gid: str):
+    """取游戏行（含 user_id，供拥有权检查）；不存在/已删返回 None。"""
+    return db.query(Game).filter(Game.id == gid, Game.is_active.is_(True)).first()
 
 
-def save_game(gid: str, s: Session) -> None:
-    GAMES_DIR.mkdir(parents=True, exist_ok=True)
-    (GAMES_DIR / f"{gid}.json").write_text(s.model_dump_json(indent=2), encoding="utf-8")
+def session_of(row: Game) -> Session:
+    return Session(**row.state)
 
 
-def delete_game(gid: str) -> bool:
-    _cache.pop(gid, None)
-    path = GAMES_DIR / f"{gid}.json"
-    if path.exists():
-        path.unlink()
-        return True
-    return False
+def save_game(db, gid: str, s: Session) -> None:
+    row = db.query(Game).filter(Game.id == gid).first()
+    if not row:
+        return
+    row.state = _dump(s)
+    row.turn_count = s.回合数
+    row.ended = s.结束
+    db.commit()
 
 
-def list_games() -> List[dict]:
-    if not GAMES_DIR.exists():
-        return []
+def delete_game(db, gid: str) -> bool:
+    row = db.query(Game).filter(Game.id == gid, Game.is_active.is_(True)).first()
+    if not row:
+        return False
+    row.is_active = False     # 软删除
+    db.commit()
+    return True
+
+
+def list_games(db, user: User) -> list:
+    q = db.query(Game).filter(Game.is_active.is_(True))
+    if not user.is_admin:
+        q = q.filter(Game.user_id == user.id)
+    rows = q.order_by(Game.updated_at.desc()).all()
+    owners = {}
+    if user.is_admin and rows:
+        ids = {r.user_id for r in rows}
+        owners = {u.id: u.username for u in db.query(User).filter(User.id.in_(ids))}
     out = []
-    for p in sorted(GAMES_DIR.glob("*.json")):
-        try:
-            d = json.loads(p.read_text(encoding="utf-8"))
-            out.append({
-                "game_id": p.stem,
-                "地点": d.get("scene", {}).get("地点", ""),
-                "回合数": d.get("回合数", 0),
-                "结束": d.get("结束"),
-            })
-        except Exception:
-            continue
+    for r in rows:
+        scene = (r.state or {}).get("scene", {})
+        out.append({
+            "game_id": r.id,
+            "地点": scene.get("地点", ""),
+            "回合数": r.turn_count,
+            "结束": r.ended,
+            "owner": owners.get(r.user_id) if user.is_admin else None,
+        })
     return out
 
 
+# ───────────────── 快照（纯函数，喂前端）─────────────────
 def _action_bar(s: Session) -> list:
     """各角色行动值与预估还要几拍才行动；最接近行动者排最上面。"""
     th = config.ACTION_THRESHOLD
@@ -90,6 +98,7 @@ def _action_bar(s: Session) -> list:
 
 
 def snapshot(gid: str, s: Session) -> dict:
+    from . import engine
     return {
         "game_id": gid,
         "回合数": s.回合数,
