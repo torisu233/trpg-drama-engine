@@ -78,9 +78,11 @@ details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; p
 /* 密码输入 + 显示/隐藏切换（登录页与改密码框共用）*/
 .pwwrap { position: relative; }
 .pwwrap input { padding-right: 56px; }
-.pwtoggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  background: transparent; color: var(--muted); border: 0; padding: 4px 6px; font-size: 12px; cursor: pointer; }
-.pwtoggle:hover { color: var(--gold); background: transparent; }
+/* 用 .pwwrap .pwtoggle 提高优先级，压过 .loginbox button{width:100%} 等，否则按钮会被撑成全宽盖住输入框 */
+.pwwrap .pwtoggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: auto; background: transparent; color: var(--muted); border: 0; padding: 4px 6px;
+  font-size: 12px; cursor: pointer; }
+.pwwrap .pwtoggle:hover { color: var(--gold); background: transparent; }
 
 /* 右上角用户菜单 */
 .usermenu { position: relative; }
