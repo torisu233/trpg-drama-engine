@@ -1,0 +1,55 @@
+# 数据库 + Auth 设计（定稿）
+
+把本地 JSON 存储迁到 **PostgreSQL（云端 RDS）/ SQLAlchemy**，并加用户 auth。本地先做好再上云。
+
+## 总原则
+- **DB 是唯一真相**：除 **admin 账号、API key（来自环境变量）** 外，所有数据都在 DB。
+- `scenarios/武侠001.json` 仅作**首次 seed** 导入 DB；之后剧本只存 DB（或导出到本地备份夹，后续功能）。
+- **软删除**：不物理删行，用 `is_active` 字段标记启用/停用；查询默认 `is_active=true`。
+- 代码用 SQLAlchemy 通用类型 → 本地 SQLite / 测试、云端 Postgres 同一套；`DATABASE_URL` 切换。
+- DB 列名用英文（驱动/工具/Alembic 友好）；JSON 内容仍是中文 Pydantic dump。
+
+## 三张表
+**users**：`id`(PK) · `username`(unique) · `password_hash`(bcrypt) · `is_admin`(bool) · `is_active`(bool, 软删) · `created_at`
+
+**scenarios**：`id`(int PK) · `title` · `author_id`(FK users) · `visibility`(`private`/`published`, 默认 private) · `content`(JSON=整个 Scenario) · `is_active` · `created_at`/`updated_at`
+
+**games**（游玩历史，**永远私人**）：`id`(str PK, uuid) · `user_id`(FK users) · `scenario_id`(FK scenarios, 可空) · `state`(JSON=整个 Session) · `turn_count`/`ended`(列表显示用) · `is_active` · `created_at`/`updated_at`
+
+关系：user 1—N scenarios（作者）/ games（拥有）；scenario 1—N games（来源，软删后游戏仍自带 Session 可玩）。
+
+## 权限 / 可见性
+| 操作 | 规则 |
+|---|---|
+| 列剧本 | `published` 或 `author_id=我`；**admin 看全部** |
+| 读剧本 | published 人人可读；private 仅作者/admin |
+| 改/删剧本 | 仅作者 / admin（删=软删 `is_active=false`） |
+| 游戏 列/读/删 | 仅 `user_id=我` / admin（永远私人） |
+| **admin** | 看到并操作**所有**剧本与游玩历史；**前端在 admin 登录时显示每项的持有者(username)** |
+
+## Auth
+- 注册 `POST /api/auth/register {username,password}`（开放自助，username 3–32、password ≥6）→ bcrypt 哈希 → 发 JWT。
+- 登录 `POST /api/auth/login` → 发 **JWT**（含 user_id + is_admin，`JWT_SECRET` 签，TTL 7 天，无 refresh）。
+- `GET /api/auth/me` → 当前用户（前端探测 + 取 is_admin 决定是否显示持有者）。
+- 请求带 `Authorization: Bearer <jwt>`，**取代 `X-App-Password` 闸**。公开端点：`/api/health`、`/api/auth/register`、`/api/auth/login`。
+- admin **不进 DB 用户表**？→ 不，admin 是 DB 里的普通 user（`is_admin=true`），开机用 `ADMIN_USERNAME`/`ADMIN_PASSWORD` 幂等 seed。
+- 登出 = 前端丢 token。localStorage + Bearer（接受 XSS 代价）。
+
+## 环境变量变化
+- **移除** `APP_PASSWORD`（被 auth 取代）。
+- **新增** `DATABASE_URL`、`JWT_SECRET`、`ADMIN_USERNAME`、`ADMIN_PASSWORD`。
+- 保留 `GROK_API_KEY`。
+
+## 架构要点
+- **移除 `game_store._cache`**：DB 为唯一真相，每请求从 DB 载入→改→存回；串流时逐拍存回。多 ECS task 才一致（这正是上云要 DB 的原因）。
+- 并发改同一局 = last-write-wins（回合制单人，先不做乐观锁）。
+- Alembic **从头用**：schema 改动有迁移纪录、不丢数据。
+
+## 构建顺序（本地、逐步验证）
+1. **DB 地基**：`db.py`（engine/Session/Base/get_db）+ `models_db.py`（User/Scenario/Game）+ config `DATABASE_URL` + Alembic 首版迁移。
+2. **auth**：register/login/me + JWT + `current_user`/`current_admin` 依赖 + seed admin。
+3. **剧本→DB**：list/get/create/update/delete + 可见性/拥有权 + 导入 武侠001。
+4. **游戏→DB**：移除 _cache、create/get/save/list/delete 绑 user。
+5. **前端**：登录/注册 + Bearer + 整数 id + admin 显示持有者。
+6. **测试**：DB fixture（SQLite）+ auth fixture，重写 test_api/test_scenario。
+7.（之后）RDS + 注入新 env + 部署。
