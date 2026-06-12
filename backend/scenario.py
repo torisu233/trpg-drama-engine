@@ -1,36 +1,32 @@
-"""剧本（Scenario）的访问与转换。
+"""剧本（Scenario）的转换与首次种子导入。
 
-Scenario = 剧本的静态/初始数据（世界观+scene+角色卡+初始会变层）。
-- list/load/save_scenario：scenarios/*.json 的列出、读、写
-- scenario_from_session：从一个 Session 抽出 Scenario（用来把手写场景导出成种子）
-- session_from_scenario：把 Scenario 包成可玩的 Session（初始化运行期字段）
+存储已迁到 DB（见 models_db.Scenario）；本模块保留：
+- Pydantic 转换：scenario_from_session / session_from_scenario / apply_author_reply（编剧合并）
+- seed_demo_scenario：首次（scenarios 表为空）把 武侠001.json 导入为 admin 的已发布剧本
 """
 import json
 from pathlib import Path
-from typing import List
 from .models import Scenario, Session
+from .models_db import Scenario as DBScenario, User
 from . import engine
 
-SCENARIOS_DIR = Path(__file__).resolve().parent.parent / "scenarios"
+SCENARIOS_DIR = Path(__file__).resolve().parent.parent / "scenarios"   # 仅作首次 seed 来源
 
 
-def list_scenarios() -> List[str]:
-    if not SCENARIOS_DIR.exists():
-        return []
-    return sorted(p.stem for p in SCENARIOS_DIR.glob("*.json"))
-
-
-def load_scenario(name: str) -> Scenario:
-    path = SCENARIOS_DIR / f"{name}.json"
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return Scenario(**data)
-
-
-def save_scenario(scenario: Scenario) -> Path:
-    SCENARIOS_DIR.mkdir(exist_ok=True)
-    path = SCENARIOS_DIR / f"{scenario.id}.json"
-    path.write_text(scenario.model_dump_json(indent=2), encoding="utf-8")
-    return path
+def seed_demo_scenario(db) -> None:
+    """首次启动（scenarios 表为空）把 武侠001.json 导入 DB（作者=admin、published）。"""
+    if db.query(DBScenario.id).first() is not None:
+        return
+    admin = db.query(User).filter(User.is_admin.is_(True)).first()
+    if not admin:
+        return
+    path = SCENARIOS_DIR / "武侠001.json"
+    if not path.exists():
+        return
+    sc = Scenario(**json.loads(path.read_text(encoding="utf-8")))   # 验证
+    db.add(DBScenario(title=sc.id or "武侠001", author_id=admin.id,
+                      visibility="published", content=sc.model_dump()))
+    db.commit()
 
 
 def scenario_from_session(s: Session, sid: str) -> Scenario:

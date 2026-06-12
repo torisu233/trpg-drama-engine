@@ -1,9 +1,13 @@
 """游玩路由：有状态场次。行动/反应以串流（NDJSON）逐拍推给前端。"""
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
+from sqlalchemy.orm import Session
 from .. import game_store, flow
 from ..deps import get_grok
+from ..db import get_db
+from ..models import Scenario
+from ..models_db import Scenario as DBScenario
 
 router = APIRouter(prefix="/api", tags=["game"])
 
@@ -14,14 +18,15 @@ def list_games():
 
 
 @router.post("/game/new")
-async def new_game(payload: dict):
+async def new_game(payload: dict, db: Session = Depends(get_db)):
     sid = payload.get("scenario_id")
     if not sid:
         raise HTTPException(400, "缺 scenario_id")
-    try:
-        gid, s = game_store.create_game(sid)
-    except FileNotFoundError:
+    row = db.query(DBScenario).filter(DBScenario.id == int(sid), DBScenario.is_active.is_(True)).first()
+    if not row:
         raise HTTPException(404, f"找不到剧本 {sid}")
+    sc = Scenario(**row.content)
+    gid, s = game_store.create_game(sc)
     await flow.advance(get_grok(), s)
     game_store.save_game(gid, s)
     return game_store.snapshot(gid, s)

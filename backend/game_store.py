@@ -18,8 +18,8 @@ def _new_id() -> str:
     return uuid.uuid4().hex[:8]
 
 
-def create_game(scenario_id: str) -> Tuple[str, Session]:
-    sc = scen.load_scenario(scenario_id)
+def create_game(sc) -> Tuple[str, Session]:
+    """从一份 Pydantic Scenario 开一局（剧本由调用方从 DB 取）。"""
     s = scen.session_from_scenario(sc)
     gid = _new_id()
     _cache[gid] = s
