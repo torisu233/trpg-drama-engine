@@ -136,7 +136,8 @@ snapshot = `{game_id, 回合数, 结束, pending, 公开日志, 在场, 行动�
 - [x] 玩家视图/角色面板（我方详尽·敌方隐藏）+ 结构化逐拍日志
 - [x] 站内密码登入页（取代被部分手机封锁的 window.prompt）
 - [x] pytest 测试套件（单元+集成，离线、~70% 覆盖）
-- [ ] GitHub Actions CI（push 跑 pytest + build）
-- [ ] Docker 化（多阶段 Dockerfile）
-- [ ] 上云 24/7：AWS App Runner 部署
+- [x] GitHub Actions CI（push 跑 pytest）+ Docker 多阶段镜像
+- [x] **git push → 全自动上云**：CI 经 OIDC build→推 ECR→部署 AWS ECS Express（见 [`docs/部署.md`](docs/部署.md)）
+- [ ] JSON → PostgreSQL/SQLAlchemy（云端持久化 + auth 地基）
+- [ ] 用户 auth 登入（注册/登录 + JWT，替换共享密码）
 - [ ] 批量叙事（多 NPC 拍揉成一段，文气更佳）
