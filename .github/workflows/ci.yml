@@ -57,3 +57,39 @@ jobs:
           docker build -t "$ECR_REPO:latest" -t "$ECR_REPO:${{ github.sha }}" .
           docker push "$ECR_REPO:latest"
           docker push "$ECR_REPO:${{ github.sha }}"
+
+  # build 过了：创建/更新 ECS Express 服务（吃刚推的镜像），实现 push→自动上云
+  deploy:
+    name: deploy 到 ECS Express
+    needs: build-and-push
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: ap-northeast-1
+      ECR_REPO: <AWS_ACCOUNT_ID>.dkr.ecr.ap-northeast-1.amazonaws.com/torisu233/trpg
+    steps:
+      - name: 经 OIDC 取得 AWS 临时凭证
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::<AWS_ACCOUNT_ID>:role/github-actions-deploy-role
+          aws-region: ${{ env.AWS_REGION }}
+
+      # 部署刚 build 的那个 sha（精确部署本次产物，不靠 latest）；密钥从 GitHub secrets 注入为环境变量
+      - name: 部署 ECS Express（创建或更新）
+        uses: aws-actions/amazon-ecs-deploy-express-service@v1
+        with:
+          service-name: trpg
+          cluster: default
+          image: ${{ env.ECR_REPO }}:${{ github.sha }}
+          container-port: 8080
+          health-check-path: /api/health
+          execution-role-arn: arn:aws:iam::<AWS_ACCOUNT_ID>:role/service-role/ecsTaskExecutionRole
+          infrastructure-role-arn: arn:aws:iam::<AWS_ACCOUNT_ID>:role/service-role/ecsInfrastructureRoleForExpressServices
+          environment-variables: |
+            [
+              {"name":"GROK_API_KEY","value":"${{ secrets.GROK_API_KEY }}"},
+              {"name":"APP_PASSWORD","value":"${{ secrets.APP_PASSWORD }}"}
+            ]
