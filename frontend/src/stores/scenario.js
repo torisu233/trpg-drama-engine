@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 
-export function emptyScenario(id = '未命名') {
+export function emptyScenario(id = '未命名剧本') {
   return {
     id,
     世界观: { 基调: '', 背景: '', 法则: [] },
@@ -13,9 +13,11 @@ export function emptyScenario(id = '未命名') {
 
 export const useScenarioStore = defineStore('scenario', {
   state: () => ({
-    list: [],
-    draft: emptyScenario(),   // 草稿正本（前端持有，存盘才落地）
-    history: [],              // 与编剧的对话 [{role,text,meta?}]
+    list: [],                 // [{id,title,visibility,author,is_mine}]
+    draft: emptyScenario(),   // 剧本内容（前端持有，存盘才落地）
+    currentId: null,          // 正在编辑的 DB id；null=新建
+    visibility: 'private',    // private | published
+    history: [],
     busy: false,
     lastMissing: [],
     lastDone: false,
@@ -26,12 +28,17 @@ export const useScenarioStore = defineStore('scenario', {
     },
     newDraft() {
       this.draft = emptyScenario()
+      this.currentId = null
+      this.visibility = 'private'
       this.history = []
       this.lastMissing = []
       this.lastDone = false
     },
     async loadDraft(id) {
-      this.draft = await api.getScenario(id)
+      const r = await api.getScenario(id)   // {id,title,visibility,content,...}
+      this.draft = r.content
+      this.currentId = r.id
+      this.visibility = r.visibility
       this.history = []
       this.lastMissing = []
       this.lastDone = false
@@ -41,7 +48,7 @@ export const useScenarioStore = defineStore('scenario', {
       this.busy = true
       try {
         const r = await api.authorTurn(this.draft, this.history, msg)
-        this.draft = r.scenario   // agent 改过的整份剧本，直接替换正本
+        this.draft = r.scenario
         this.lastMissing = r.missing || []
         this.lastDone = !!r.done
         this.history.push({ role: '编剧', text: r.reply, meta: { 区块: r.区块, char_id: r.char_id } })
@@ -50,10 +57,16 @@ export const useScenarioStore = defineStore('scenario', {
         this.busy = false
       }
     },
-    async save(id) {
-      this.draft.id = id
-      await api.saveScenario(id, this.draft)
+    async save() {
+      const body = { scenario: this.draft, visibility: this.visibility }
+      if (this.currentId) {
+        await api.updateScenario(this.currentId, body)
+      } else {
+        const r = await api.createScenario(body)
+        this.currentId = r.id
+      }
       await this.refreshList()
+      return this.currentId
     },
     async remove(id) {
       await api.delScenario(id)

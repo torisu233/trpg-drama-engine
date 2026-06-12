@@ -3,7 +3,11 @@
     <div class="row-between">
       <h2>编剧 · {{ d.id }}</h2>
       <div class="row" style="gap:8px; flex:0 0 auto;">
-        <input v-model="saveId" style="width:140px" placeholder="存盘名称" />
+        <input v-model="d.id" style="width:140px" placeholder="剧本名称" />
+        <select v-model="s.visibility" style="width:88px">
+          <option value="private">私人</option>
+          <option value="published">发布</option>
+        </select>
         <button @click="save" :disabled="s.busy">保存</button>
         <router-link to="/" style="align-self:center">← 返回</router-link>
       </div>
@@ -141,16 +145,16 @@
 
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useScenarioStore } from '../stores/scenario'
 import StrListEditor from '../components/StrListEditor.vue'
 import CondListEditor from '../components/CondListEditor.vue'
 
 const s = useScenarioStore()
 const route = useRoute()
+const router = useRouter()
 const d = computed(() => s.draft)
 const msg = ref('')
-const saveId = ref('')
 const chatEl = ref(null)
 const newCharId = ref('')
 const newLedgerId = ref('')
@@ -162,8 +166,9 @@ const ledgerCandidates = computed(() =>
 
 onMounted(async () => {
   const id = route.params.id
-  if (id) await s.loadDraft(id)
-  saveId.value = s.draft.id && s.draft.id !== '未命名' ? s.draft.id : ''
+  if (id) {
+    try { await s.loadDraft(id) } catch (e) { alert('加载失败：' + e.message); router.push('/') }
+  }
 })
 
 watch(() => s.history.length, () => nextTick(() => {
@@ -211,7 +216,12 @@ async function send() {
   try { await s.sendMessage(t) } catch (e) { alert('编剧出错：' + e.message) }
 }
 async function save() {
-  const id = (saveId.value || s.draft.id || '未命名').trim()
-  try { await s.save(id); alert('已保存：' + id) } catch (e) { alert('保存失败：' + e.message) }
+  if (!d.value.id || !d.value.id.trim()) { alert('请先填剧本名称'); return }
+  try {
+    const wasNew = !s.currentId
+    const id = await s.save()
+    if (wasNew) router.push('/author/' + id)   // 新建后带上 id，后续是更新
+    alert('已保存')
+  } catch (e) { alert('保存失败：' + e.message) }
 }
 </script>

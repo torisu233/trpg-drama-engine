@@ -1,20 +1,22 @@
-// 访问密码状态（取代 window.prompt——部分手机浏览器会封锁 prompt 导致无法输入）。
-// 单一真相来源：所有 API 请求的 X-App-Password 都读 auth.pw；App 以 auth.ok 决定是否放行。
+// 登录状态：JWT token + 当前用户。token 存 localStorage，请求带 Authorization: Bearer。
 import { reactive } from 'vue'
 
 export const auth = reactive({
-  pw: localStorage.getItem('app_pw') || '',  // 已存密码（与旧版同键，向后兼容）
-  ok: false,                                 // 是否已通过验证（决定放行 router-view）
+  token: localStorage.getItem('token') || '',
+  user: null,      // { username, is_admin }
+  ready: false,    // 初次探测（/auth/me）是否完成
 })
 
-export function setPw(pw) {
-  auth.pw = pw
-  localStorage.setItem('app_pw', pw)
+export function setSession(token, user) {
+  auth.token = token
+  auth.user = user
+  localStorage.setItem('token', token)
 }
 
-// 401 或注销时清掉，并让全站退回登录闸
-export function clearPw() {
-  auth.pw = ''
-  auth.ok = false
-  localStorage.removeItem('app_pw')
+export function clearSession() {
+  auth.token = ''
+  auth.user = null
+  localStorage.removeItem('token')
 }
+
+export const isAdmin = () => !!(auth.user && auth.user.is_admin)

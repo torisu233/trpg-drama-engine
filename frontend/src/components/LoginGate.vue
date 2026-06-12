@@ -1,42 +1,46 @@
 <template>
   <div class="loginwrap">
     <div class="loginbox panel">
-      <h2>需要访问密码</h2>
-      <p class="muted">请输入主持人提供的密码后进入。</p>
-      <input ref="box" v-model="pw" type="password" inputmode="text"
-             autocomplete="current-password" placeholder="密码"
-             @keyup.enter="submit" />
+      <h2>{{ mode === 'login' ? '登录' : '注册' }}</h2>
+      <p class="muted">{{ mode === 'login' ? '输入账号密码进入。' : '自己填账号和密码即可注册。' }}</p>
+      <input v-model="username" placeholder="账号（3–32 位）" autocomplete="username" @keyup.enter="submit" />
+      <input v-model="password" type="password" placeholder="密码（≥6 位）"
+             autocomplete="current-password" @keyup.enter="submit" />
       <div v-if="err" class="threat" style="margin-top:8px">{{ err }}</div>
       <button style="margin-top:10px" @click="submit" :disabled="busy">
-        {{ busy ? '验证中…' : '进入' }}
+        {{ busy ? '…' : (mode === 'login' ? '登录' : '注册') }}
       </button>
+      <div class="muted" style="margin-top:10px; cursor:pointer" @click="toggle">
+        {{ mode === 'login' ? '没有账号？去注册' : '已有账号？去登录' }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { auth, setPw } from '../auth'
+import { ref } from 'vue'
+import { auth, setSession } from '../auth'
 import { api } from '../api'
 
-const pw = ref(auth.pw || '')
+const mode = ref('login')
+const username = ref('')
+const password = ref('')
 const err = ref('')
 const busy = ref(false)
-const box = ref(null)
 
-onMounted(() => box.value && box.value.focus())
+function toggle() { mode.value = mode.value === 'login' ? 'register' : 'login'; err.value = '' }
 
 async function submit() {
-  if (!pw.value) { err.value = '请输入密码'; return }
+  if (!username.value.trim() || !password.value) { err.value = '请输入账号和密码'; return }
   busy.value = true
   err.value = ''
-  setPw(pw.value)
   try {
-    await api.listScenarios()   // 用受保护端点验证密码；成功才放行
-    auth.ok = true
+    const call = mode.value === 'login' ? api.login : api.register
+    const r = await call(username.value.trim(), password.value)
+    setSession(r.token, { username: r.username, is_admin: r.is_admin })
+    auth.ready = true
   } catch (e) {
-    auth.ok = false             // 401 时 api 已清掉密码
-    err.value = '密码错误，或服务器无回应。'
+    err.value = e.message || '失败'
   } finally {
     busy.value = false
   }

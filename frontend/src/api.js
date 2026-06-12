@@ -1,26 +1,37 @@
-import { auth, clearPw } from './auth'
+import { auth, clearSession } from './auth'
 
-function withPw(opts = {}) {
-  return { ...opts, headers: { ...(opts.headers || {}), 'X-App-Password': auth.pw || '' } }
+function authHeaders(extra = {}) {
+  const h = { ...extra }
+  if (auth.token) h['Authorization'] = 'Bearer ' + auth.token
+  return h
+}
+
+async function _err(r) {
+  let msg = 'HTTP ' + r.status
+  try { const e = await r.json(); if (e && e.detail) msg = e.detail } catch (_) {}
+  return new Error(msg)
 }
 
 async function j(url, opts = {}) {
-  const r = await fetch(url, withPw(opts))
-  if (r.status === 401) { clearPw(); throw new Error('UNAUTHORIZED') }   // 退回站内登录闸
-  if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status))
-  return r.json()
+  const r = await fetch(url, { ...opts, headers: authHeaders(opts.headers) })
+  if (r.status === 401) { clearSession(); throw new Error('未登录或登录已过期') }
+  if (!r.ok) throw await _err(r)
+  return r.status === 204 ? null : r.json()
 }
 const post = (url, body) =>
   j(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
 const put = (url, body) =>
   j(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) })
 
-// 串流 POST：每收到一行 NDJSON 就回呼一次 onSnap（逐拍更新画面）
+// 串流 POST：每行 NDJSON 回呼一次 onSnap（逐拍更新）
 async function postStream(url, body, onSnap) {
-  const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }
-  const r = await fetch(url, withPw(opts))
-  if (r.status === 401) { clearPw(); throw new Error('UNAUTHORIZED') }   // 退回站内登录闸
-  if (!r.ok) throw new Error((await r.text()) || ('HTTP ' + r.status))
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body || {}),
+  })
+  if (r.status === 401) { clearSession(); throw new Error('未登录或登录已过期') }
+  if (!r.ok) throw await _err(r)
   const reader = r.body.getReader()
   const dec = new TextDecoder()
   let buf = ''
@@ -40,11 +51,16 @@ async function postStream(url, body, onSnap) {
 }
 
 export const api = {
-  // 剧本 / 编剧
+  // auth
+  register: (username, password) => post('/api/auth/register', { username, password }),
+  login: (username, password) => post('/api/auth/login', { username, password }),
+  me: () => j('/api/auth/me'),
+  // 剧本
   listScenarios: () => j('/api/scenarios'),
-  getScenario: (id) => j('/api/scenarios/' + encodeURIComponent(id)),
-  saveScenario: (id, sc) => put('/api/scenarios/' + encodeURIComponent(id), sc),
-  delScenario: (id) => j('/api/scenarios/' + encodeURIComponent(id), { method: 'DELETE' }),
+  getScenario: (id) => j('/api/scenarios/' + id),
+  createScenario: (body) => post('/api/scenarios', body),         // {scenario, visibility}
+  updateScenario: (id, body) => put('/api/scenarios/' + id, body),
+  delScenario: (id) => j('/api/scenarios/' + id, { method: 'DELETE' }),
   authorTurn: (scenario, history, message) => post('/api/author/turn', { scenario, history, message }),
   // 游玩
   listGames: () => j('/api/games'),
