@@ -11,7 +11,8 @@
         <div class="menu-backdrop" @click="menuOpen = false"></div>
         <div class="menu">
           <a href="#" @click.prevent="openPw">修改密码</a>
-          <a href="#" @click.prevent="openFeedback">提交反馈</a>
+          <router-link v-if="auth.user.is_admin" to="/admin/feedback" @click="menuOpen = false">查看反馈</router-link>
+          <router-link v-else to="/feedback" @click="menuOpen = false">提交反馈</router-link>
           <a href="#" @click.prevent="logout">登出</a>
         </div>
       </template>
@@ -51,10 +52,6 @@ onMounted(async () => {
 })
 
 function openPw() { menuOpen.value = false; pwOpen.value = true }
-function openFeedback() {
-  menuOpen.value = false
-  alert('「提交反馈」将在下一步（功能4）接入')   // 占位：功能4 接入与 admin 的聊天
-}
 function logout() {
   menuOpen.value = false
   clearSession()

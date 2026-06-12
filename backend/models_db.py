@@ -4,7 +4,7 @@
 content/state 的 JSON 列里。删除一律走软删除 `is_active`。
 """
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, JSON
+from sqlalchemy import String, Integer, Boolean, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -47,3 +47,18 @@ class Game(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class FeedbackMessage(Base):
+    """反馈聊天：一个普通用户一条会话线，统一对「admin」。
+
+    thread_user_id = 这条会话属于哪个普通用户；sender_is_admin 区分谁发的；
+    is_read = admin 是否已读该用户消息（admin 端未读标记用；admin 自己发的恒为已读）。
+    """
+    __tablename__ = "feedback_messages"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    thread_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    sender_is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    body: Mapped[str] = mapped_column(Text)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

@@ -250,3 +250,43 @@ def test_game_admin_sees_owner(client, tavern_scenario, admin_headers):
         assert row["owner"] == "author"      # tavern_scenario 的拥有者用户名
     finally:
         client.delete(f"/api/game/{gid}", headers=a)
+
+
+# ───────────────── 反馈聊天 ─────────────────
+def test_feedback_flow(client, make_user, admin_headers):
+    """用户发反馈 → admin 在列表看到(未读) → 打开标已读 → 回复 → 用户看到回复。"""
+    _, u = make_user("dave")
+    assert client.post("/api/feedback", json={"body": "有个建议"}, headers=u).status_code == 200
+
+    mine = client.get("/api/feedback", headers=u).json()["messages"]
+    assert len(mine) == 1 and mine[0]["body"] == "有个建议" and mine[0]["sender_is_admin"] is False
+
+    threads = client.get("/api/feedback/threads", headers=admin_headers).json()["threads"]
+    assert len(threads) == 1 and threads[0]["username"] == "dave" and threads[0]["unread"] == 1
+    uid = threads[0]["user_id"]
+
+    t = client.get(f"/api/feedback/{uid}", headers=admin_headers).json()
+    assert len(t["messages"]) == 1 and t["username"] == "dave"
+    # 打开后未读清零
+    assert client.get("/api/feedback/threads", headers=admin_headers).json()["threads"][0]["unread"] == 0
+
+    assert client.post(f"/api/feedback/{uid}", json={"body": "收到，谢谢"}, headers=admin_headers).status_code == 200
+    mine2 = client.get("/api/feedback", headers=u).json()["messages"]
+    assert len(mine2) == 2 and mine2[1]["sender_is_admin"] is True and mine2[1]["body"] == "收到，谢谢"
+
+
+def test_feedback_admin_endpoints_require_admin(client, make_user, user_headers):
+    """普通用户打不开 admin 反馈端点（后端硬把关，不靠前端）。"""
+    make_user("dave")
+    assert client.get("/api/feedback/threads", headers=user_headers).status_code == 403
+    assert client.get("/api/feedback/1", headers=user_headers).status_code == 403
+    assert client.post("/api/feedback/1", json={"body": "x"}, headers=user_headers).status_code == 403
+
+
+@pytest.mark.parametrize("method, path", [
+    ("get", "/api/feedback"), ("post", "/api/feedback"),
+], ids=["读自己", "发反馈"])
+def test_feedback_requires_auth(client, method, path):
+    fn = getattr(client, method)
+    kw = {"json": {"body": "x"}} if method == "post" else {}
+    assert fn(path, **kw).status_code == 401

@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from . import config, deps, scenario as scen
-from .routes import scenarios, game
+from .routes import scenarios, game, feedback
 from .routes import auth as auth_routes
 from .auth import seed_admin
 from .db import SessionLocal
@@ -44,6 +44,7 @@ app.add_middleware(
 app.include_router(auth_routes.router)  # /api/auth/register, /login, /me
 app.include_router(scenarios.router)    # /api/scenarios*, /api/author/turn
 app.include_router(game.router)         # /api/games, /api/game/*
+app.include_router(feedback.router)     # /api/feedback*（用户+admin 反馈聊天）
 
 
 @app.get("/api/health")

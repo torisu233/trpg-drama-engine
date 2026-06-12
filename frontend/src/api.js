@@ -71,4 +71,11 @@ export const api = {
   delGame: (gid) => j('/api/game/' + gid, { method: 'DELETE' }),
   actionStream: (gid, action, onSnap) => postStream('/api/game/' + gid + '/action', { action }, onSnap),
   reactStream: (gid, reaction, onSnap) => postStream('/api/game/' + gid + '/react', { reaction }, onSnap),
+  // 反馈：用户端（自己那条线）
+  feedbackMine: () => j('/api/feedback'),
+  feedbackSend: (body) => post('/api/feedback', { body }),
+  // 反馈：admin 端（所有会话）
+  feedbackThreads: () => j('/api/feedback/threads'),
+  feedbackThread: (uid) => j('/api/feedback/' + uid),
+  feedbackReply: (uid, body) => post('/api/feedback/' + uid, { body }),
 }
