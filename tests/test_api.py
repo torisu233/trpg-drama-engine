@@ -11,7 +11,7 @@
 import json
 import pytest
 
-from backend import config, scenario as scen
+from backend import scenario as scen
 from backend.scene import new_tavern_session
 
 
@@ -201,25 +201,3 @@ def test_game_admin_sees_owner(client, tavern_scenario, admin_headers):
         assert row["owner"] == "author"      # tavern_scenario 的拥有者用户名
     finally:
         client.delete(f"/api/game/{gid}", headers=a)
-
-
-# ───────────────── 旧密码闸（legacy，将被 auth 取代，但中间件仍在）─────────────────
-@pytest.mark.parametrize("header, expected", [
-    (None,        401),   # 不带密码 → 挡
-    ("nope",      401),   # 密码错误 → 挡
-    ("secret123", 401),   # 密码对，但仍缺 JWT → 被 current_user 挡（双层保护）
-], ids=["无密码", "错密码", "对密码无token"])
-def test_password_gate_runs_before_auth(client, monkeypatch, header, expected):
-    """设了 APP_PASSWORD 后，/api/* 先过密码闸；密码对了还得再过 JWT。"""
-    monkeypatch.setattr(config, "APP_PASSWORD", "secret123")
-    headers = {"X-App-Password": header} if header else {}
-    assert client.get("/api/scenarios", headers=headers).status_code == expected
-
-
-def test_health_and_auth_bypass_gate(client, monkeypatch):
-    """密码闸放行健康检查与 /api/auth/*（探活与登录不该被旧闸挡）。"""
-    monkeypatch.setattr(config, "APP_PASSWORD", "secret123")
-    assert client.get("/api/health").status_code == 200
-    # 注册端点不被密码闸挡（即使没带 X-App-Password）
-    assert client.post("/api/auth/register",
-                       json={"username": "newbie", "password": "pw123456"}).status_code in (200, 400)

@@ -1,4 +1,4 @@
-# 機密：不提交真實 API key
+# 机密：不提交真实 API key
 .env
 
 # Python
@@ -15,16 +15,10 @@ htmlcov/
 # Claude Code 本地工具设定
 .claude/
 
-# 執行期資料/日誌
+# 运行期资料/日志（旧 JSON 存盘遗留目录；数据现已在 DB）
 data/
 *.log
 
-# 編輯器
+# 编辑器
 .vscode/
 .idea/
-
-# 機器專屬：ngrok 固定網域設定（publish-ngrok.ps1 記住用）
-.ngrok-domain.txt
-
-# 本地 SQLite 数据库（开发期；真数据在 DB，不进版控）
-*.db

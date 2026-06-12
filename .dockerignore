@@ -6,12 +6,11 @@
 **/*.pyc
 **/node_modules
 frontend/dist          # 在容器内重新 build，别用宿主机的旧产物
-data                   # 运行期游戏存档
+data                   # 旧 JSON 存盘遗留目录（数据现已在 DB）
 .env                   # 密钥绝不进镜像（运行时注入）
 .coverage
 .pytest_cache
 tests                  # 测试不进生产镜像（CI 另跑）
 docs
-*.ps1                  # 发布脚本（Windows 本机用）
-.ngrok-domain.txt
+*.ps1                  # Windows 本机脚本（不进镜像）
 .claude
