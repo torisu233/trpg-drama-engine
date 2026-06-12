@@ -36,9 +36,9 @@ LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 # ── 公开访问密码闸（旧；将被 auth 取代）──
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 
-# ── 数据库 ──
-# 本地默认 SQLite（零设置）；云端设 DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/db 指向 RDS
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./trpg.db")
+# ── 数据库（本地与云端皆 PostgreSQL，确保行为一致）──
+# 本地默认连 docker-compose 起的 PG；云端设 DATABASE_URL 指向 RDS
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg2://trpg:trpg@localhost:5433/trpg")
 
 # ── Auth ──
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-insecure-change-me")   # 云端务必设随机值

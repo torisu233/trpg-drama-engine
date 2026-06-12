@@ -1,0 +1,30 @@
+# 本地开发数据库：与云端 RDS 同为 PostgreSQL，确保 dev/prod 行为一致。
+#   起：docker compose up -d --wait     停：docker compose down（数据留在 volume）
+#   清空数据：docker compose down -v
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: trpg
+      POSTGRES_PASSWORD: trpg
+      POSTGRES_DB: trpg
+    ports:
+      - "5433:5432"   # 主机用 5433（避开本机原生 Postgres 占的 5432）；容器内仍是 5432
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trpg -d trpg"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 可选：浏览器里看数据库的小工具（http://localhost:8888，系统选 PostgreSQL、服务器 db、账密 trpg）
+  adminer:
+    image: adminer
+    ports:
+      - "8888:8080"
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
