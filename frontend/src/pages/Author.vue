@@ -62,7 +62,7 @@
                 <select v-model="c.扮演"><option value="玩家">玩家</option><option value="agent">agent</option></select>
               </div>
             </div>
-            <label>身分背景（含外貌年龄）</label><textarea v-model="c.身分背景" rows="2"></textarea>
+            <label>身份背景（含外貌年龄）</label><textarea v-model="c.身份背景" rows="2"></textarea>
             <label>说话风格</label><input v-model="c.说话风格" />
             <label>动机目标</label><input v-model="c.动机目标" />
             <label>性格</label><StrListEditor v-model="c.性格" label="加" />
@@ -179,7 +179,7 @@ function addChar() {
   const id = newCharId.value.trim()
   if (!id || id in d.value.角色卡) return
   d.value.角色卡[id] = {
-    名: '', 阵营: '我方', 扮演: 'agent', 性别: '', 身分背景: '', 性格: [],
+    名: '', 阵营: '我方', 扮演: 'agent', 性别: '', 身份背景: '', 性格: [],
     说话风格: '', 动机目标: '', 行为偏好: [], 能力: [], 防御特性: [], 弱点: [],
   }
   if (!d.value.scene.在场.includes(id)) d.value.scene.在场.push(id)

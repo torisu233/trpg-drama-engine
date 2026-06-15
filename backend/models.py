@@ -46,7 +46,7 @@ class CharCard(BaseModel):
     扮演: str = "agent"                    # "玩家" | "agent"
     性别: str = ""                         # 可被对手观察的基本信息（列入视图/名册，防脑补）
     # ── 演戏用（角色 agent 与本人读；对手看不到）──
-    身分背景: str = ""                      # 出身、来历、职业
+    身份背景: str = ""                      # 出身、来历、职业
     性格: List[str] = Field(default_factory=list)
     说话风格: str = ""                      # 语气/口头禅/用词，让对话有辨识度
     动机目标: str = ""                      # 他这场想要什么，驱动其选择

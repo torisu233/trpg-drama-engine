@@ -39,7 +39,7 @@ class GrokClient:
         max_tokens: int = 2000,
         model: str = "",
     ) -> T:
-        """调用 Grok，回传经 Pydantic 验证的结构化对象；验证失败会自动重问。"""
+        """调用 Grok，返回经 Pydantic 验证的结构化对象；验证失败会自动重问。"""
         try:
             return await self.client.chat.completions.create(
                 model=model or self.model_default,

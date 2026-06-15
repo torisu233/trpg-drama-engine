@@ -194,7 +194,7 @@ def test_new_game_fog_and_panels(client, tavern_scenario):
         assert r["pending"]["type"] == "player_action"
         assert any("开场" in l for l in r["公开日志"])
         # 迷雾：玩家视图无敌方秘密、上帝视角有
-        assert "怕火" not in r["玩家视图"] and "怕火" in r["帐本调试"]
+        assert "怕火" not in r["玩家视图"] and "怕火" in r["账本调试"]
         # 结构化角色面板：队友卡可见、敌方卡不注入
         roles = {x["id"]: x for x in r["角色"]}
         assert roles["aqing"]["是我方"] and roles["aqing"].get("能力")

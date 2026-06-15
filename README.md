@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/torisu233/trpg-drama-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/torisu233/trpg-drama-engine/actions/workflows/ci.yml)
 
-依 [`docs/设计文档.md`](docs/设计文档.md) 的**戏剧引擎**（状态帐本 + LLM 裁决取代骰子数值）做的多 agent 跑团原型。两大功能：**剧本设计**（编剧 agent）与**实际游玩**。多用户（注册/登录），数据存 PostgreSQL，已上云（AWS ECS Express + RDS，见 [`docs/部署.md`](docs/部署.md)）。
+依 [`docs/设计文档.md`](docs/设计文档.md) 的**戏剧引擎**（状态账本 + LLM 裁决取代骰子数值）做的多 agent 跑团原型。两大功能：**剧本设计**（编剧 agent）与**实际游玩**。多用户（注册/登录），数据存 PostgreSQL，已上云（AWS ECS Express + RDS，见 [`docs/部署.md`](docs/部署.md)）。
 
 ## 架构
 
@@ -12,7 +12,7 @@ backend/
   models.py     数据模型：World/CharCard/Ledger/Session/Scenario + LLM I/O（中文字段）
   config.py     平衡常数（行动条/运气/摘要/整理门槛/温度）+ DATABASE_URL/JWT 设置
   grok_client.py  Grok（openai SDK 指向 x.ai + instructor，自动重问）
-  engine.py     行动条 / 两轴 / 迷雾 / delta / TTL / 帐本整理辅助（纯函数）
+  engine.py     行动条 / 两轴 / 迷雾 / delta / TTL / 账本整理辅助（纯函数）
   agents.py     裁决 / 叙事 / 角色意图+反应 / 摘要 / 整理 / 编剧
   flow.py       开局推进 + 串流逐拍 + 每拍维护（TTL/整理/摘要）
   scenario.py   Scenario↔Session 转换 + 编剧套用 + 首次 seed 武侠001
@@ -114,7 +114,7 @@ docker compose up -d --wait        # 集成测试连真 PG（独立测试库 trp
 | POST | `/api/game/{id}/react` | `{reaction:{反应}}` → **NDJSON 串流** |
 | DELETE | `/api/game/{id}` | 软删除（仅本人/admin） |
 
-snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构化逐拍), 在场, 行动条, 局面, 角色(我方详尽/敌方隐藏), 帐本调试}`。
+snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构化逐拍), 在场, 行动条, 局面, 角色(我方详尽/敌方隐藏), 账本调试}`。
 
 **反馈聊天**（用户↔admin；一用户一会话线，统一独立页面 `/feedback`、`/admin/feedback`）
 | 方法 | 路径 | 作用 |
@@ -125,7 +125,7 @@ snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构�
 | POST | `/api/feedback/{user_id}` | admin：回复某用户 |
 
 ## 路线图
-- [x] 内核戏剧引擎（行动条/两轴/裁决/叙事/迷雾/摘要/帐本整理）
+- [x] 内核戏剧引擎（行动条/两轴/裁决/叙事/迷雾/摘要/账本整理）
 - [x] 世界观法则 + 双用角色卡（含秘密弱点）+ 社会事实长期记忆
 - [x] 模式中立 prompt（对话/交涉/潜入皆适用）+ 叙事丰富度
 - [x] 剧本数据层 + 编剧 agent + 全可编辑编剧页
@@ -135,7 +135,7 @@ snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构�
 - [x] GitHub Actions CI（push 跑 pytest）+ Docker 多阶段镜像
 - [x] **git push → 全自动上云**：CI 经 OIDC build→推 ECR→部署 AWS ECS Express（见 [`docs/部署.md`](docs/部署.md)）
 - [x] JSON → PostgreSQL/SQLAlchemy + Alembic（云端 RDS 持久化）
-- [x] 用户 auth 登入（注册/登录 + JWT，取代共享密码）
+- [x] 用户 auth 登录（注册/登录 + JWT，取代共享密码）
 - [x] 复制别人发布的剧本来改；用户菜单（改密码 + 显示密码切换）
 - [x] 反馈聊天（用户↔admin，统一独立页面 + 未读标记 + 8 秒轮询）
 - [ ] 批量叙事（多 NPC 拍揉成一段，文气更佳）

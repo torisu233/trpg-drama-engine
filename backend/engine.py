@@ -22,7 +22,7 @@ def _tick(s: Session) -> None:
 
 
 def pick_actor(s: Session) -> str:
-    """每次调用先 +1 拍；没人达门槛就继续加，直到有人达标。回传行动者 id。"""
+    """每次调用先 +1 拍；没人达门槛就继续加，直到有人达标。返回行动者 id。"""
     _tick(s)  # 「场上每行动一次，大家加一次」
     while not any(cl.行动值 >= config.ACTION_THRESHOLD for cl in s.会变层.角色.values()):
         _tick(s)
@@ -59,7 +59,7 @@ def target_char(s: Session, intent) -> Optional[str]:
 
 
 def needs_reaction(s: Session, intent) -> Optional[str]:
-    """轴 A：是否该向某角色收反应？回传该角色 id 或 None。
+    """轴 A：是否该向某角色收反应？返回该角色 id 或 None。
     闸门：对方是角色 ∧（是玩家 ∨（感知得到 ∧ 能对抗））。模棱两可宁可多收。"""
     tgt = target_char(s, intent)
     if not tgt:
@@ -179,7 +179,7 @@ def known_characters(s: Session, viewer: str = PLAYER) -> list:
         }
         if ally:                                  # 我方互知底细
             item.update({
-                "身分背景": card.身分背景, "性格": card.性格, "说话风格": card.说话风格,
+                "身份背景": card.身份背景, "性格": card.性格, "说话风格": card.说话风格,
                 "动机目标": card.动机目标, "行为偏好": card.行为偏好,
                 "能力": card.能力, "防御特性": card.防御特性, "弱点": card.弱点,
             })
@@ -305,7 +305,7 @@ def distribute(s: Session, public: str, private: dict) -> None:
         s.记忆.setdefault(cid, []).append(msg)
 
 
-# ───────────────── 帐本清理：瞬态 TTL 自动过期 ─────────────────
+# ───────────────── 账本清理：瞬态 TTL 自动过期 ─────────────────
 def _alive(c: Condition, turn: int) -> bool:
     if c.剩余拍数 is None or c.创建回合 is None:
         return True

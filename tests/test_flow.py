@@ -1,7 +1,7 @@
-"""每拍维护：滚动摘要压缩 / 帐本整理。
+"""每拍维护：滚动摘要压缩 / 账本整理。
 
-这两步会调用「会打 Grok」的 agent 函式，用 pytest 内建的 `monkeypatch` 夹具把它们
-换成「替身（fake）」——这是测试隔离外部依赖的标准手法。async 函式直接用 asyncio.run 跑
+这两步会调用「会打 Grok」的 agent 函数，用 pytest 内建的 `monkeypatch` 夹具把它们
+换成「替身（fake）」——这是测试隔离外部依赖的标准手法。async 函数直接用 asyncio.run 跑
 （保持简单，不引入 pytest-asyncio 插件）。
 """
 import asyncio
@@ -24,7 +24,7 @@ def test_memory_compress(sess, monkeypatch):
 
 
 def test_ledger_consolidate(sess, monkeypatch):
-    """帐本整理：公开持久近义条目被合并；gm 条目与带 TTL 的瞬态不被动到。"""
+    """账本整理：公开持久近义条目被合并；gm 条目与带 TTL 的瞬态不被动到。"""
     sess.会变层.场景.社会事实 = [
         Condition(内容=f"刀疤要求先还债#{i}", 可见性="public") for i in range(5)
     ]

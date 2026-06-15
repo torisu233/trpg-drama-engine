@@ -45,19 +45,19 @@ def _nonempty(v) -> bool:
 
 
 def _merge_fields(existing, new, fields) -> None:
-    """逐栏合并：agent 回传空栏视为「不更动」，保留既有值（避免误清空）。"""
+    """逐栏合并：agent 返回空栏视为「不更动」，保留既有值（避免误清空）。"""
     for f in fields:
         nv = getattr(new, f, None)
         if _nonempty(nv):
             setattr(existing, f, nv)
 
 
-_CARD_FIELDS = ["名", "阵营", "扮演", "性别", "身分背景", "性格", "说话风格",
+_CARD_FIELDS = ["名", "阵营", "扮演", "性别", "身份背景", "性格", "说话风格",
                 "动机目标", "行为偏好", "能力", "防御特性", "弱点"]
 
 
 def apply_author_reply(sc: Scenario, rep) -> str:
-    """把编剧 agent 的区块更新「合并」进剧本正本（空栏＝不更动）。回传更新的区块名。"""
+    """把编剧 agent 的区块更新「合并」进剧本正本（空栏＝不更动）。返回更新的区块名。"""
     区 = rep.区块
     if 区 == "world" and rep.world:
         _merge_fields(sc.世界观, rep.world, ["基调", "背景", "法则"])

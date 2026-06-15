@@ -45,7 +45,7 @@
             <div class="small muted" v-if="c.动机目标"><b>动机</b> {{ c.动机目标 }}</div>
             <details v-if="hasMore(c)" class="more">
               <summary class="muted small">更多</summary>
-              <div class="small" v-if="c.身分背景">身分：{{ c.身分背景 }}</div>
+              <div class="small" v-if="c.身份背景">身份：{{ c.身份背景 }}</div>
               <div class="small" v-if="c.性格 && c.性格.length">性格：{{ c.性格.join('、') }}</div>
               <div class="small" v-if="c.说话风格">说话：{{ c.说话风格 }}</div>
               <div class="small" v-if="c.行为偏好 && c.行为偏好.length">偏好：{{ c.行为偏好.join('、') }}</div>
@@ -115,8 +115,8 @@
       </div>
 
       <details style="margin-top:12px">
-        <summary class="muted">🔧 帐本调试（含 gm 秘密，上帝视角）</summary>
-        <pre>{{ snap.帐本调试 }}</pre>
+        <summary class="muted">🔧 账本调试（含 gm 秘密，上帝视角）</summary>
+        <pre>{{ snap.账本调试 }}</pre>
       </details>
     </template>
   </div>
@@ -146,7 +146,7 @@ const reaction = ref('')
 
 function pct(b) { return Math.min(100, Math.round((b.行动值 / b.门槛) * 100)) }
 function hasMore(c) {
-  return c.身分背景 || (c.性格 && c.性格.length) || c.说话风格 ||
+  return c.身份背景 || (c.性格 && c.性格.length) || c.说话风格 ||
     (c.行为偏好 && c.行为偏好.length) || (c.持有 && c.持有.length)
 }
 
