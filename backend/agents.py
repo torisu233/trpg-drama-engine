@@ -15,10 +15,10 @@ from . import engine, config
 
 
 def _roster(s: Session) -> str:
-    """在场角色名册（含性别，供裁决/叙事正确归属、避免脑补）。"""
+    """在场角色名册（**用角色名指代**；含性别避免脑补）。"""
     return "、".join(
-        f"{cid}={s.角色卡[cid].名}" + (f"（{s.角色卡[cid].性别}）" if s.角色卡[cid].性别 else "")
-        for cid in s.scene.在场)
+        s.角色卡[cid].名 + (f"（{s.角色卡[cid].性别}）" if s.角色卡[cid].性别 else "")
+        for cid in s.scene.在场 if cid in s.角色卡)
 
 
 def _world_brief(s: Session) -> str:
@@ -46,9 +46,12 @@ def _action_order_brief(s: Session) -> str:
 
 
 def _perception_brief(s: Session, 感知分发: dict) -> str:
-    """感知分发文本；**跳过不在角色卡里的 key**——LLM 偶尔拿角色名/虚构 id 当 key，直接索引会崩。"""
-    rows = [f"- {cid}（{s.角色卡[cid].名}）：{lvl}"
-            for cid, lvl in 感知分发.items() if cid in s.角色卡]
+    """感知分发文本；键经 resolve_id 解析（名字或 id 都行），解析不到的跳过、不崩。"""
+    rows = []
+    for k, lvl in 感知分发.items():
+        cid = engine.resolve_id(s, k)
+        if cid:
+            rows.append(f"- {s.角色卡[cid].名}：{lvl}")
     return "\n".join(rows) or "- 全体：全部"
 
 
@@ -119,7 +122,7 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 - **可主动倒戈/投靠（少用、要有理由）**：若剧情让你决定改换阵营（被说服、利益所驱、恩义、识时务投降…），把「阵营切换」填目标阵营（我方/敌/中立），并在「行动」里演出这个转变。这只是**提议**，是否生效由裁决裁定（投靠我方尤其要有足够理由才被接纳）；不切换就填 null。
 
 只输出 JSON：
-{{"行动":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","目标":"主要对象的角色id（在场者之一）或 null","隐蔽":false,"阵营切换":null}}"""
+{{"行动":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","目标":"主要对象的角色名（在场者之一）或 null","隐蔽":false,"阵营切换":null}}"""
     out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
     out.actor = cid
     return out
@@ -181,7 +184,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 # 地面真相（唯一依据，含角色的能力/防御特性/弱点，与玩家看不到的 <gm> 秘密）
 {gt}
 
-# 在场角色 id
+# 在场角色（用角色名指代）
 {在场}
 
 # 本拍行动意图
@@ -226,8 +229,8 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 - **同一事实只记一处**：招供/承诺/情报记成「社会事实」即可，**不要又拷贝一份到角色身心状况**。
 - 可见性只能填这四种之一：`public` / `gm` / `faction:阵营` / `self:角色id`（不要自创其他值）。
 - 感知分发：判断「谁察觉到这件事、察觉到多少」。昏迷者收不到；重伤分心可能漏看；背后动作可能未察觉。
-- **以角色为键的字段（感知分发/速度更新/感知更新/阵营变更）键一律用上面「在场角色 id」里的 id（如 player/scar），切勿用角色名。**
-- **阵营变更（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「阵营切换」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「阵营变更」(char_id→新阵营 我方/敌/中立)；**投靠「我方」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 GM摘要 点出这次转变，让叙事交代清楚。阵营只用 我方/敌/中立。
+- **以角色为键的字段（感知分发/速度更新/感知更新/阵营变更）以及「主体」一律用上面「在场角色」里的角色名指代（程序会自动对应）。**
+- **阵营变更（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「阵营切换」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「阵营变更」(角色名→新阵营 我方/敌/中立)；**投靠「我方」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 GM摘要 点出这次转变，让叙事交代清楚。阵营只用 我方/敌/中立。
 
 # 输出（只输出 JSON）
 {{
@@ -236,14 +239,14 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
  "可行性": "不可能/受阻/可行/需改写",
  "结果阶梯": "成功/成功但有代价/局势逆转",
  "ledger_delta": {{
-    "add": [{{"主体":"char_id或场景","类别":"姿势位置/身心状况/特殊情况/空间关系/场景事实/社会事实/情报","内容":"质性事实","gates":"如何约束后续","可见性":"public","剩余拍数":null}}],
+    "add": [{{"主体":"角色名或场景","类别":"姿势位置/身心状况/特殊情况/空间关系/场景事实/社会事实/情报","内容":"质性事实","gates":"如何约束后续","可见性":"public","剩余拍数":null}}],
     "remove": ["要移除的状态的关键字"],
     "modify": []
  }},
- "速度更新": {{"char_id": 整数速度（重伤3/濒死2/昏迷0，正常不填）}},
- "感知更新": {{"char_id": "如 蒙眼/昏迷/重伤分心"}},
- "阵营变更": {{"char_id": "我方/敌/中立（仅在批准倒戈/投靠/被策反时填，否则留空）"}},
- "感知分发": {{"char_id": "全部 / 部分:只看到表象 / 无"}},
+ "速度更新": {{"角色名": 整数速度（重伤3/濒死2/昏迷0，正常不填）}},
+ "感知更新": {{"角色名": "如 蒙眼/昏迷/重伤分心"}},
+ "阵营变更": {{"角色名": "我方/敌/中立（仅在批准倒戈/投靠/被策反时填，否则留空）"}},
+ "感知分发": {{"角色名": "全部 / 部分:只看到表象 / 无"}},
  "GM摘要": "给叙事者的一句话地面真相（这拍实际发生了什么、收在什么未决张力上：威胁/疑点/抉择）"
 }}"""
     return await grok.call(prompt, Adjudication, temperature=config.TEMP_ADJUDICATOR, max_tokens=1200)
@@ -300,7 +303,7 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 # 世界观基调（决定文字风格）
 {s.世界观.基调 or "（中性）"}
 
-# 在场角色 id
+# 在场角色（用角色名指代）
 {在场}
 
 # 故事进展（玩家刚看到的；承接它，但**绝不可重述**已写过的事件或对白）
@@ -349,7 +352,7 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 - **充分但不杜撰**：可以在已提供的事实上尽情演绎（感官、心理、语气、节奏），但**所有具体细节都必须源自上面给的材料**（地面真相/相关状态与判定/状态变更/角色口吻/场景锚点），不得发明新事实或新实体。
 
 只输出 JSON：
-{{"公开":"全场可见的叙事","私密":{{"char_id":"该角色独有的额外感知（可选，没有就不要这个 key）"}}}}"""
+{{"公开":"全场可见的叙事","私密":{{"角色名":"该角色独有的额外感知（可选，没有就不要这个 key）"}}}}"""
     return await grok.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1000)
 
 

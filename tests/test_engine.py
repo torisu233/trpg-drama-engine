@@ -145,6 +145,53 @@ def test_perception_brief_skips_unknown_keys(sess):
     assert agents._perception_brief(sess, {"查无此人": "无"}) == "- 全体：全部"  # 全无效→默认
 
 
+def test_resolve_id(sess):
+    """agent 用名字，程序在边界解析回 id；兼容 id、未知→None。"""
+    assert engine.resolve_id(sess, "scar") == "scar"     # 已是 id 原样
+    assert engine.resolve_id(sess, "刀疤") == "scar"      # 名字→id
+    assert engine.resolve_id(sess, "阿青") == "aqing"
+    assert engine.resolve_id(sess, "查无此人") is None
+    assert engine.resolve_id(sess, None) is None
+
+
+def test_target_char_by_name(sess):
+    """目标用名字也能解析到 id。"""
+    assert engine.target_char(sess, Intent(actor="player", 行动="打", 目标="刀疤")) == "scar"
+    assert engine.target_char(sess, Intent(actor="player", 行动="打", 目标="scar")) == "scar"
+    assert engine.target_char(sess, Intent(actor="player", 行动="打", 目标="无此人")) is None
+
+
+def test_apply_delta_keys_by_name(sess):
+    """裁决用角色名当键（主体/速度更新/阵营变更）也能落到对应角色。"""
+    adj = Adjudication(
+        速度更新={"刀疤": 3},
+        阵营变更={"刀疤": "我方"},
+        ledger_delta=LedgerDelta(add=[DeltaItem(主体="刀疤", 类别="身心状况", 内容="右臂中刀")]),
+    )
+    engine.apply_delta(sess, adj)
+    assert sess.会变层.角色["scar"].行动速度 == 3
+    assert sess.角色卡["scar"].阵营 == "我方"
+    assert any("右臂中刀" in c.内容 for c in sess.会变层.角色["scar"].身心状况)
+
+
+def test_apply_delta_normalizes_self_visibility(sess):
+    """裁决用名字写 self: 可见性 → 落账归一化为 self:id，自见才生效。"""
+    adj = Adjudication(ledger_delta=LedgerDelta(add=[
+        DeltaItem(主体="刀疤", 类别="身心状况", 内容="暗自怕火", 可见性="self:刀疤")]))
+    engine.apply_delta(sess, adj)
+    cond = sess.会变层.角色["scar"].身心状况[-1]
+    assert cond.可见性 == "self:scar"                          # 名字→id
+    assert engine._visible(cond, "scar", "敌") is True         # 本人可见
+    assert engine._visible(cond, "player", "我方") is False    # 他人不可见
+
+
+def test_distribute_private_by_name(sess):
+    """私密叙事用角色名当键，也能分发到对应角色。"""
+    engine.distribute(sess, "公开叙事", {"阿青": "阿青独有的感知"})
+    assert sess.记忆["aqing"][-1] == "阿青独有的感知"
+    assert sess.记忆["scar"][-1] == "公开叙事"
+
+
 def test_beats_to_act():
     """程序算好「还差几拍到门槛」：负初始行动值→很多拍后(模拟缓慢逼近)。"""
     from backend.models import CharLedger

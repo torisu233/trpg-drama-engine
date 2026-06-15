@@ -15,6 +15,21 @@ INCAPACITATED_KW = ("昏迷", "失去意识", "绑", "缚", "瘫", "晕", "制�
 RISKY_KW = ("跳", "攀", "潜", "赌", "抢", "翻越", "扑", "闪身")
 
 
+def resolve_id(s: Session, key) -> Optional[str]:
+    """把 LLM 给的角色「名字或 id」解析回 char_id。
+
+    设计：agent 一律看/用角色名，程序只在操作边界用本函数转回 id。
+    兼容三种输入：已是 id → 原样；是某角色的「名」→ 该 id；都不匹配 → None。"""
+    if not key:
+        return None
+    if key in s.角色卡:                       # 已是 id
+        return key
+    for cid, c in s.角色卡.items():            # 按名字匹配（名字应唯一）
+        if c.名 == key:
+            return cid
+    return None
+
+
 # ───────────────── 行动条 ─────────────────
 def _tick(s: Session) -> None:
     for cl in s.会变层.角色.values():
@@ -71,7 +86,7 @@ def _can_oppose(s: Session, who: str) -> bool:
 
 
 def target_char(s: Session, intent) -> Optional[str]:
-    t = intent.目标
+    t = resolve_id(s, intent.目标)            # 目标可能是名字或 id，统一解析回 id
     if t and t in s.会变层.角色 and t != intent.actor:
         return t
     return None
@@ -227,7 +242,7 @@ def ground_truth(s: Session) -> str:
     for cid, cl in s.会变层.角色.items():
         card = s.角色卡[cid]
         g = f"/{card.性别}" if card.性别 else ""
-        lines.append(f"◆ {card.名}[{cid}]（{card.阵营}{g}）速度{cl.行动速度} 感知:{cl.感知能力}")
+        lines.append(f"◆ {card.名}（{card.阵营}{g}）速度{cl.行动速度} 感知:{cl.感知能力}")
         if card.能力:
             lines.append(f"  能力：{'、'.join(card.能力)}")
         if card.防御特性:
@@ -245,9 +260,19 @@ def ground_truth(s: Session) -> str:
 
 
 # ───────────────── 套用裁决 delta（防御式，绝不崩） ─────────────────
-def _to_cond(d: DeltaItem, turn: int) -> Condition:
+def _normalize_vis(s: Session, vis: str) -> str:
+    """可见性 self:<X> 里 X 可能是名字（agent 用名）→ 解析回 id，否则玩家/角色对不上自见状态。
+    faction:<阵营> 用的是阵营值（我方/敌/中立）不是名字，无需解析。"""
+    if vis and vis.startswith("self:"):
+        cid = resolve_id(s, vis.split(":", 1)[1])
+        if cid:
+            return f"self:{cid}"
+    return vis
+
+
+def _to_cond(s: Session, d: DeltaItem, turn: int) -> Condition:
     return Condition(内容=d.内容, gates=d.gates, 程度=d.程度,
-                     可见性=d.可见性, 来源="裁决",
+                     可见性=_normalize_vis(s, d.可见性), 来源="裁决",
                      剩余拍数=d.剩余拍数, 创建回合=turn)
 
 
@@ -260,7 +285,7 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
     turn = s.回合数
     # add
     for d in delta.add:
-        cond = _to_cond(d, turn)
+        cond = _to_cond(s, d, turn)
         if d.主体 == "场景":
             if d.类别 == "空间关系":
                 s.会变层.场景.空间关系.append(cond)
@@ -268,14 +293,16 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
                 s.会变层.场景.社会事实.append(cond)
             else:
                 s.会变层.场景.场景事实.append(cond)
-        elif d.主体 in s.会变层.角色:
-            cl = s.会变层.角色[d.主体]
-            if d.类别 == "姿势位置":
-                cl.姿势位置 = d.内容
-            elif d.类别 == "特殊情况":
-                cl.特殊情况.append(cond)
-            else:
-                cl.身心状况.append(cond)
+        else:
+            bid = resolve_id(s, d.主体)        # 主体可能是名字或 id
+            if bid and bid in s.会变层.角色:
+                cl = s.会变层.角色[bid]
+                if d.类别 == "姿势位置":
+                    cl.姿势位置 = d.内容
+                elif d.类别 == "特殊情况":
+                    cl.特殊情况.append(cond)
+                else:
+                    cl.身心状况.append(cond)
     # remove（以关键字匹配）
     for key in delta.remove:
         for cl in s.会变层.角色.values():
@@ -286,18 +313,22 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
         s.会变层.场景.社会事实 = _remove_matching(s.会变层.场景.社会事实, key)
     # modify（简化：当作 add 一条新状况）
     for d in delta.modify:
-        if d.主体 in s.会变层.角色:
-            s.会变层.角色[d.主体].身心状况.append(_to_cond(d, turn))
-    # 衍生字段更新
-    for cid, sp in adj.速度更新.items():
-        if cid in s.会变层.角色:
+        bid = resolve_id(s, d.主体)
+        if bid and bid in s.会变层.角色:
+            s.会变层.角色[bid].身心状况.append(_to_cond(s, d, turn))
+    # 衍生字段更新（键可能是名字或 id，统一 resolve_id）
+    for k, sp in adj.速度更新.items():
+        cid = resolve_id(s, k)
+        if cid and cid in s.会变层.角色:
             s.会变层.角色[cid].行动速度 = sp
-    for cid, cap in adj.感知更新.items():
-        if cid in s.会变层.角色:
+    for k, cap in adj.感知更新.items():
+        cid = resolve_id(s, k)
+        if cid and cid in s.会变层.角色:
             s.会变层.角色[cid].感知能力 = cap
     # 阵营变更（倒戈/投靠/被策反）：就地改角色卡阵营，影响今后的同阵营可见性
-    for cid, fac in adj.阵营变更.items():
-        if cid in s.角色卡 and fac:
+    for k, fac in adj.阵营变更.items():
+        cid = resolve_id(s, k)
+        if cid and fac:
             s.角色卡[cid].阵营 = fac
 
 
@@ -340,8 +371,14 @@ def log_pending_entry(s: Session, actor: str, intent, reaction=None) -> dict:
 # ───────────────── 分发叙事（GM 写、程序送） ─────────────────
 def distribute(s: Session, public: str, private: dict) -> None:
     s.公开日志.append(public)
+    # 私密叙事的键可能是角色名（agent 用名），解析回 id 再按角色分发
+    by_id = {}
+    for k, v in (private or {}).items():
+        cid = resolve_id(s, k)
+        if cid:
+            by_id[cid] = v
     for cid in s.scene.在场:
-        msg = private.get(cid) or public
+        msg = by_id.get(cid) or public
         s.记忆.setdefault(cid, []).append(msg)
 
 
