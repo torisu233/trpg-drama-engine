@@ -112,6 +112,5 @@ def snapshot(gid: str, s: Session) -> dict:
         "行动条": _action_bar(s),
         "局面": engine.player_situation(s),
         "角色": engine.known_characters(s),
-        "玩家视图": engine.build_view(s, "player"),
         "账本调试": engine.ground_truth(s),
     }

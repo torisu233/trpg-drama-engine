@@ -1,4 +1,4 @@
-"""验证非战斗模式：手搭一个纯交涉场景跑一拍（会打 grok-3）。
+"""验证非战斗模式：手搭一个纯交涉场景跑一拍（会打 LLM / DeepSeek）。
 运行： python -m backend.mode_test
 """
 import asyncio

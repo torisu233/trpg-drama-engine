@@ -13,7 +13,7 @@ from ..deps import get_grok
 from ..db import get_db, SessionLocal
 from ..auth import current_user
 from ..models import Scenario
-from ..models_db import Scenario as DBScenario, Game, User
+from ..models_db import Scenario as DBScenario, User
 
 router = APIRouter(prefix="/api", tags=["game"])
 

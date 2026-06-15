@@ -5,6 +5,7 @@
 - 建/改/删：登录用户；改删仅作者/admin；删=软删除。
 - 编剧 turn：无状态（前端持草稿），仅需登录。
 """
+import copy
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -81,7 +82,8 @@ def copy_scenario(sid: int, user: User = Depends(current_user), db: Session = De
     if not (user.is_admin or src.visibility == "published" or src.author_id == user.id):
         raise HTTPException(403, "无权复制该剧本")
     title = ((src.title or "未命名剧本") + "（副本）")[:120]
-    r = DBScenario(title=title, author_id=user.id, visibility="private", content=src.content)
+    r = DBScenario(title=title, author_id=user.id, visibility="private",
+                   content=copy.deepcopy(src.content))   # 深拷贝，杜绝副本与原作共享引用
     db.add(r)
     db.commit()
     db.refresh(r)

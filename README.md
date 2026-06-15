@@ -11,7 +11,7 @@ backend/
   ── 内核（框架无关）──
   models.py     数据模型：World/CharCard/Ledger/Session/Scenario + LLM I/O（中文字段）
   config.py     平衡常数（行动条/运气/摘要/整理门槛/温度）+ DATABASE_URL/JWT 设置
-  grok_client.py  Grok（openai SDK 指向 x.ai + instructor，自动重问）
+  grok_client.py  LLM 客户端（openai SDK 指向 DeepSeek，OpenAI 兼容 + instructor，自动重问）
   engine.py     行动条 / 两轴 / 迷雾 / delta / TTL / 账本整理辅助（纯函数）
   agents.py     裁决 / 叙事 / 角色意图+反应 / 摘要 / 整理 / 编剧
   flow.py       开局推进 + 串流逐拍 + 每拍维护（TTL/整理/摘要）

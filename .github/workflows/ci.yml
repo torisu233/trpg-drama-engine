@@ -96,7 +96,7 @@ jobs:
 
       # 部署刚 build 的那个 sha（精确部署本次产物，不靠 latest）；密钥从 GitHub secrets 注入为环境变量
       # 网络：把任务放进我们自建 VPC 的「公开子网」+ 自建 app-SG。
-      #   - 公开子网 → Express 给任务分配 public IP，经 IGW 拉 ECR / 连 x.ai，免 NAT Gateway。
+      #   - 公开子网 → Express 给任务分配 public IP，经 IGW 拉 ECR / 连 DeepSeek API，免 NAT Gateway。
       #   - app-SG → RDS 安全组只放行它（确定的 SG id，避开 Express 自建 SG 的先有鸡蛋问题）。
       #   两者均存 GitHub secrets（非机密但避免硬编码资源 id）。
       - name: 部署 ECS Express（创建或更新）

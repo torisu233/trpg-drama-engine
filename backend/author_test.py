@@ -1,4 +1,4 @@
-"""脚本化测试编剧 agent 内核（会打 grok-3）。
+"""脚本化测试编剧 agent 内核（会打 LLM / DeepSeek）。
 
 运行： python -m backend.author_test
 """

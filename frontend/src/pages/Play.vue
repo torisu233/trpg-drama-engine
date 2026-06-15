@@ -110,7 +110,7 @@
         <div class="panel">
           <label>你要如何回应（闪避/格挡/反击/还嘴/喝止…，一句话含做法）</label>
           <textarea v-model="reaction" rows="2"
-            placeholder="例：翻身滚到桌下 / 擡臂格开并反手一刀 / 冷笑回敬，趁他挪动欺身上前"></textarea>
+            placeholder="例：翻身滚到桌下 / 抬臂格开并反手一刀 / 冷笑回敬，趁他挪动欺身上前"></textarea>
           <button style="margin-top:8px" @click="doReact" :disabled="g.busy">回应</button>
         </div>
       </div>
