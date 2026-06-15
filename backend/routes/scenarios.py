@@ -49,6 +49,7 @@ def list_scenarios(user: User = Depends(current_user), db: Session = Depends(get
         authors = {u.id: u.username for u in db.query(User).filter(User.id.in_(ids))}
     return {"scenarios": [
         {"id": r.id, "title": r.title, "visibility": r.visibility,
+         "背景": (((r.content or {}).get("世界观") or {}).get("背景") or "")[:120],
          "author": authors.get(r.author_id), "is_mine": r.author_id == user.id}
         for r in rows]}
 

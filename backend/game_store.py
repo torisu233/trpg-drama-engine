@@ -5,7 +5,7 @@ DB 为唯一真相——不再用内存缓存（多 ECS task 才一致）。每�
 """
 import uuid
 from .models import Session
-from .models_db import Game, User
+from .models_db import Game, User, Scenario as DBScenario
 from . import scenario as scen, config
 
 
@@ -64,11 +64,17 @@ def list_games(db, user: User) -> list:
     if user.is_admin and rows:
         ids = {r.user_id for r in rows}
         owners = {u.id: u.username for u in db.query(User).filter(User.id.in_(ids))}
+    # 剧本名：经 scenario_id 关联 title（含已软删的剧本仍可取名）
+    titles = {}
+    sids = {r.scenario_id for r in rows if r.scenario_id}
+    if sids:
+        titles = {s.id: s.title for s in db.query(DBScenario).filter(DBScenario.id.in_(sids))}
     out = []
     for r in rows:
         scene = (r.state or {}).get("scene", {})
         out.append({
             "game_id": r.id,
+            "剧本名": titles.get(r.scenario_id) or scene.get("地点", "") or r.id,
             "地点": scene.get("地点", ""),
             "回合数": r.turn_count,
             "结束": r.ended,

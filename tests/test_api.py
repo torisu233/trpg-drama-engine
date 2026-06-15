@@ -108,6 +108,7 @@ def test_scenario_crud(client, user_headers):
     lst = client.get("/api/scenarios", headers=user_headers).json()["scenarios"]
     mine = next(s for s in lst if s["id"] == sid)
     assert mine["is_mine"] and mine["title"] == "我的剧本"
+    assert "背景" in mine                       # 列表带背景摘要字段(供首页卡片显示)
 
     # 读：拿得到 content
     got = client.get(f"/api/scenarios/{sid}", headers=user_headers).json()
@@ -248,6 +249,7 @@ def test_game_admin_sees_owner(client, tavern_scenario, admin_headers):
         games = client.get("/api/games", headers=admin_headers).json()["games"]
         row = next(g for g in games if g["game_id"] == gid)
         assert row["owner"] == "author"      # tavern_scenario 的拥有者用户名
+        assert row["剧本名"] == "_pytest_tavern"   # 游戏列表显示剧本名(而非地点)
     finally:
         client.delete(f"/api/game/{gid}", headers=a)
 

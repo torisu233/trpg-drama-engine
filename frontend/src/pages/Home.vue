@@ -10,6 +10,7 @@
           {{ sc.title }}
           <span class="tag">{{ sc.visibility === 'published' ? '已发布' : '私人' }}</span>
         </div>
+        <div class="card-desc" v-if="sc.背景">{{ sc.背景 }}</div>
         <div class="muted" v-if="admin && sc.author">作者：{{ sc.author }}</div>
         <div class="card-actions">
           <button @click="play(sc.id)" :disabled="!!starting">
@@ -28,7 +29,7 @@
     <h2>我的游戏{{ admin ? '（管理员：全部）' : '' }}</h2>
     <div class="cards">
       <div class="card" v-for="g in game.games" :key="g.game_id">
-        <div class="card-title">{{ g.地点 || g.game_id }}</div>
+        <div class="card-title">{{ g.剧本名 || g.game_id }}</div>
         <div class="muted">第 {{ g.回合数 }} 拍{{ g.结束 ? ' · 已结束' : '' }}
           <template v-if="admin && g.owner"> · 玩家 {{ g.owner }}</template>
         </div>
