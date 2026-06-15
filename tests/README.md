@@ -37,7 +37,7 @@ Postgres service container（见 `.github/workflows/ci.yml` test job）。纯逻
 - **鉴权夹具**：`make_user(admin=?)` 工厂直接造库+`create_token` 发 Bearer，可造普通/管理员；测试授权要覆盖 401（未登录）/403（无权）/404（不泄露存在性）三种边界。
 - **`is` 只用于 `True/False/None`**（单例身份比较），别用来比字符串/数字。
 - **随机**（`roll_luck`）不测结果、只测周围确定性分支。
-- 本专案的模块级共享状态（如 `deps._grok`）动了要还原（用 `monkeypatch`）。游戏已纯 DB、无内存缓存。
+- 本项目的模块级共享状态（如 `deps._grok`）动了要还原（用 `monkeypatch`）。游戏已纯 DB、无内存缓存。
 
 ## 维护工作流（频繁改项目时）
 1. 改码 → `pytest` → 红了吗？

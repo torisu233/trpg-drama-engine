@@ -1,4 +1,4 @@
-# 专案工具配置。这里放 pytest 与 coverage 的设定（取代散落的 pytest.ini/.coveragerc）。
+# 项目工具配置。这里放 pytest 与 coverage 的配置（取代散落的 pytest.ini/.coveragerc）。
 [tool.pytest.ini_options]
 testpaths = ["tests"]          # 只在 tests/ 找测试
 pythonpath = ["."]             # 把仓库根加进 import 路径，让 `import backend.xxx` 可用

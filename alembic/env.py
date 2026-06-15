@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# 用专案自己的 DATABASE_URL 与模型 metadata（不走 alembic.ini 里的占位 url）
+# 用项目自己的 DATABASE_URL 与模型 metadata（不走 alembic.ini 里的占位 url）
 from backend.config import DATABASE_URL
 from backend.db import Base
 from backend import models_db  # noqa: F401  让 User/Scenario/Game 注册到 metadata

@@ -12,7 +12,7 @@ __pycache__/
 htmlcov/
 .pytest_cache/
 
-# Claude Code 本地工具设定
+# Claude Code 本地工具配置
 .claude/
 
 # 运行期资料/日志（旧 JSON 存盘遗留目录；数据现已在 DB）
