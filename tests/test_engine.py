@@ -136,6 +136,15 @@ def test_log_pending_entry_fog(sess):
     assert engine.log_pending_entry(sess, "player", pi, r_foe)["反应文本"] is None  # 敌方回应不泄露
 
 
+def test_perception_brief_skips_unknown_keys(sess):
+    """感知分发里 LLM 用了不存在的 key(角色名/虚构 id)时跳过、不崩(线上 KeyError 回归)。"""
+    from backend import agents
+    out = agents._perception_brief(sess, {"player": "全部", "凯尔": "无", "scar": "部分"})
+    assert "凯尔" not in out                      # 未知 key 被跳过
+    assert "玩家" in out and "刀疤" in out         # 有效 key 正常
+    assert agents._perception_brief(sess, {"查无此人": "无"}) == "- 全体：全部"  # 全无效→默认
+
+
 def test_beats_to_act():
     """程序算好「还差几拍到门槛」：负初始行动值→很多拍后(模拟缓慢逼近)。"""
     from backend.models import CharLedger

@@ -45,6 +45,13 @@ def _action_order_brief(s: Session) -> str:
     return "；".join(parts)
 
 
+def _perception_brief(s: Session, 感知分发: dict) -> str:
+    """感知分发文本；**跳过不在角色卡里的 key**——LLM 偶尔拿角色名/虚构 id 当 key，直接索引会崩。"""
+    rows = [f"- {cid}（{s.角色卡[cid].名}）：{lvl}"
+            for cid, lvl in 感知分发.items() if cid in s.角色卡]
+    return "\n".join(rows) or "- 全体：全部"
+
+
 def _mates_brief(s: Session, cid: str) -> str:
     """同阵营在场队友的整张卡（含弱点）——同阵营彼此知底，供 NPC 协同；无队友返回空串。"""
     lines = []
@@ -219,6 +226,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 - **同一事实只记一处**：招供/承诺/情报记成「社会事实」即可，**不要又拷贝一份到角色身心状况**。
 - 可见性只能填这四种之一：`public` / `gm` / `faction:阵营` / `self:角色id`（不要自创其他值）。
 - 感知分发：判断「谁察觉到这件事、察觉到多少」。昏迷者收不到；重伤分心可能漏看；背后动作可能未察觉。
+- **以角色为键的字段（感知分发/速度更新/感知更新/阵营变更）键一律用上面「在场角色 id」里的 id（如 player/scar），切勿用角色名。**
 - **阵营变更（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「阵营切换」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「阵营变更」(char_id→新阵营 我方/敌/中立)；**投靠「我方」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 GM摘要 点出这次转变，让叙事交代清楚。阵营只用 我方/敌/中立。
 
 # 输出（只输出 JSON）
@@ -258,8 +266,7 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
     pcard = s.角色卡.get(engine.PLAYER)
     player_name = pcard.名 if pcard else "玩家"
     序 = _action_order_brief(s)
-    分发 = "\n".join(f"- {cid}（{s.角色卡[cid].名}）：{lvl}"
-                     for cid, lvl in adj.感知分发.items()) or "- 全体：全部"
+    分发 = _perception_brief(s, adj.感知分发)
 
     actor = s.角色卡.get(intent.actor)
     actor_name = actor.名 if actor else intent.actor
