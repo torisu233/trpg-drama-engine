@@ -105,12 +105,14 @@ def test_log_entries_fog(sess):
     pi = Intent(actor="player", 行动="拔剑冲门", 目标="scar")
     e = engine.log_action_entry(sess, pi, None, "player", "你拔剑冲向门口。")
     assert e["行动者"] == "player"
+    assert e["扮演"] == "玩家"               # 判定「玩家」靠扮演，不靠 id
     assert e["行动文本"] == "拔剑冲门"       # 我方：附输入
 
     ei = Intent(actor="scar", 行动="快刀直劈", 目标="player")
     pr = Reaction(actor="player", 反应="侧身格挡")
     e2 = engine.log_action_entry(sess, ei, pr, "scar", "刀疤挥刀。")
     assert e2["行动者"] == "scar"
+    assert e2["扮演"] == "agent"            # 敌方 NPC 扮演=agent
     assert e2["行动文本"] is None           # 敌方：意图不外泄
     assert e2["反应文本"] == "侧身格挡"      # 我方反应可见
 

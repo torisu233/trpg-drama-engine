@@ -272,7 +272,7 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
 # ───────────────── 结构化日志条目（行动者 + 我方输入文本，供前端展示） ─────────────────
 def log_system_entry(text: str) -> dict:
     """系统行（场景/开场/结束）：无行动者。"""
-    return {"叙事": text, "行动者": None, "行动者名": None, "阵营": None,
+    return {"叙事": text, "行动者": None, "行动者名": None, "阵营": None, "扮演": None,
             "行动文本": None, "反应文本": None, "反应者名": None}
 
 
@@ -285,6 +285,7 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str) -
         "行动者": actor,
         "行动者名": card.名 if card else actor,
         "阵营": card.阵营 if card else "",
+        "扮演": card.扮演 if card else "",   # 「玩家」/「agent」——判定是不是玩家用（不靠 id）
         "行动文本": intent.行动 if ally else None,
         "反应文本": None,
         "反应者名": None,

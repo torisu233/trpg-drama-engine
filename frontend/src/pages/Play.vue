@@ -46,7 +46,8 @@
       <div class="log">
         <div v-for="(e, i) in beats" :key="i" class="beat" :class="{ sys: !e.行动者 }">
           <div class="beat-who" v-if="e.行动者">
-            <span class="who-name" :class="factionClass(e.阵营)">{{ e.行动者名 }}</span>
+            <span class="who-name" :class="whoClass(e)">{{ e.行动者名 }}</span>
+            <span class="who-tag">{{ stanceLabel(e) }}</span>
           </div>
           <div class="beat-body">
             <div class="beat-input" v-if="e.行动文本">
@@ -144,6 +145,15 @@ const beats = computed(() => {
   return s.进行中 ? [...base, { ...s.进行中, _pending: true }] : base
 })
 function factionClass(f) { return f === '我方' ? 'ally' : (f === '敌' ? 'foe' : '') }
+// 是不是玩家看「扮演」，敌我看「阵营」——都不依赖角色 id
+function whoClass(e) { return e.扮演 === '玩家' ? 'me' : factionClass(e.阵营) }
+function stanceLabel(e) {
+  if (e.扮演 === '玩家') return '玩家'
+  if (e.阵营 === '我方') return '友方'
+  if (e.阵营 === '敌') return '敌方'
+  if (e.阵营 === '中立') return '中立'
+  return e.阵营 || ''
+}
 
 const act = ref({ 行动: '', 目标: '', 隐蔽: false })
 const reaction = ref('')
