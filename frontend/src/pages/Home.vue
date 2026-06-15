@@ -12,10 +12,10 @@
         </div>
         <div class="muted" v-if="admin && sc.author">作者：{{ sc.author }}</div>
         <div class="card-actions">
-          <router-link v-if="sc.is_mine || admin" :to="'/author/' + sc.id">编辑</router-link>
           <button @click="play(sc.id)" :disabled="!!starting">
             {{ starting === sc.id ? '加载中…' : '游玩' }}
           </button>
+          <button v-if="sc.is_mine || admin" class="mini" @click="router.push('/author/' + sc.id)">编辑</button>
           <button v-if="!sc.is_mine" class="mini" @click="copyScenario(sc.id)" :disabled="copying === sc.id">
             {{ copying === sc.id ? '复制中…' : '复制改编' }}
           </button>
@@ -33,7 +33,7 @@
           <template v-if="admin && g.owner"> · 玩家 {{ g.owner }}</template>
         </div>
         <div class="card-actions">
-          <router-link :to="'/play/' + g.game_id">续玩</router-link>
+          <button @click="router.push('/play/' + g.game_id)">续玩</button>
           <button class="mini" @click="delGame(g.game_id)">删除</button>
         </div>
       </div>

@@ -63,9 +63,6 @@ details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; p
 .chsep { color: var(--muted); flex: 0 0 auto; }
 .cnum { color: var(--muted); font-variant-numeric: tabular-nums; }
 .chip.ready .cnum { color: var(--gold); }
-.minibar { width: 34px; height: 5px; background: #15130f; border-radius: 3px; overflow: hidden; }
-.minifill { display: block; height: 100%; background: var(--accent); transition: width .35s ease; }
-.chip.ready .minifill { background: var(--gold); }
 /* 站内登录闸（取代被部分手机浏览器封锁的 window.prompt）*/
 .loginwrap { display: flex; justify-content: center; padding: 48px 12px; }
 .loginbox { width: 100%; max-width: 360px; text-align: center; }

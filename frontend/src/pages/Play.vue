@@ -7,19 +7,6 @@
 
     <div v-if="!snap" class="muted">加载中…</div>
     <template v-else>
-      <div class="actionstrip" v-if="snap.行动条 && snap.行动条.length">
-        <span class="strip-label muted">行动序</span>
-        <template v-for="(b, i) in snap.行动条" :key="b.id">
-          <span v-if="i > 0" class="chsep">›</span>
-          <span class="chip" :class="{ ready: b.行动值 >= b.门槛 }"
-                :title="b.阵营 + (b.预估拍 <= 0 ? ' · 可行动' : ' · ' + b.预估拍 + ' 拍后')">
-            {{ b.名 }}
-            <span class="cnum">{{ b.行动值 }}/{{ b.门槛 }}</span>
-            <span class="minibar"><span class="minifill" :style="{ width: pct(b) + '%' }"></span></span>
-          </span>
-        </template>
-      </div>
-
       <!-- 你的局面（常驻置顶）-->
       <div class="panel situ" v-if="snap.局面">
         <div class="situ-line"><b>场景</b>{{ snap.局面.场景 }}</div>
@@ -71,6 +58,19 @@
             <div class="beat-narr">{{ e.叙事 }}</div>
           </div>
         </div>
+      </div>
+
+      <!-- 行动值：各角色当前行动值（达门槛即可行动，最接近者排最前）；放在行动/状态区上方便于决策 -->
+      <div class="actionstrip" v-if="snap.行动条 && snap.行动条.length">
+        <span class="strip-label muted">行动值</span>
+        <template v-for="(b, i) in snap.行动条" :key="b.id">
+          <span v-if="i > 0" class="chsep">·</span>
+          <span class="chip" :class="{ ready: b.行动值 >= b.门槛 }"
+                :title="b.阵营 + (b.预估拍 <= 0 ? ' · 可行动' : ' · ' + b.预估拍 + ' 拍后')">
+            {{ b.名 }}
+            <span class="cnum">{{ b.行动值 }}/{{ b.门槛 }}</span>
+          </span>
+        </template>
       </div>
 
       <div v-if="g.busy" class="muted" style="margin-top:8px">…（裁决与叙事中，每拍约 10–15 秒）…</div>
@@ -144,7 +144,6 @@ function factionClass(f) { return f === '我方' ? 'ally' : (f === '敌' ? 'foe'
 const act = ref({ 行动: '', 目标: '', 隐蔽: false })
 const reaction = ref('')
 
-function pct(b) { return Math.min(100, Math.round((b.行动值 / b.门槛) * 100)) }
 function hasMore(c) {
   return c.身份背景 || (c.性格 && c.性格.length) || c.说话风格 ||
     (c.行为偏好 && c.行为偏好.length) || (c.持有 && c.持有.length)
