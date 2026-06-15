@@ -37,6 +37,25 @@ def consume_turn(s: Session, actor: str) -> None:
     s.会变层.角色[actor].行动值 -= config.ACTION_THRESHOLD   # 扣门槛、保留溢出
 
 
+def beats_to_act(cl, threshold: int = config.ACTION_THRESHOLD) -> int:
+    """还差几拍这个角色才到行动门槛（程序算好；负初始行动值→很多拍后，模拟缓慢逼近）。"""
+    速 = max(cl.行动速度, 1)
+    需 = max(threshold - cl.行动值, 0)
+    return (需 + 速 - 1) // 速
+
+
+def action_order(s: Session) -> list:
+    """在场角色按「还有几拍轮到」升序：[(cid, 名, 阵营, 预估拍)…]。供 agent 了解行动次序与逼近。"""
+    rows = []
+    for cid in s.scene.在场:
+        cl = s.会变层.角色.get(cid)
+        if cl is None or cid not in s.角色卡:
+            continue
+        rows.append((cid, s.角色卡[cid].名, s.角色卡[cid].阵营, beats_to_act(cl)))
+    rows.sort(key=lambda t: (t[3], -s.会变层.角色[t[0]].行动值))
+    return rows
+
+
 # ───────────────── 感知 / 两轴 ─────────────────
 def _perceives(s: Session, who: str) -> bool:
     cap = s.会变层.角色[who].感知能力

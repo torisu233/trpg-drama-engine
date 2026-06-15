@@ -136,6 +136,24 @@ def test_log_pending_entry_fog(sess):
     assert engine.log_pending_entry(sess, "player", pi, r_foe)["反应文本"] is None  # 敌方回应不泄露
 
 
+def test_beats_to_act():
+    """程序算好「还差几拍到门槛」：负初始行动值→很多拍后(模拟缓慢逼近)。"""
+    from backend.models import CharLedger
+    assert engine.beats_to_act(CharLedger(行动速度=5, 行动值=0)) == 4       # ceil(20/5)
+    assert engine.beats_to_act(CharLedger(行动速度=5, 行动值=-40)) == 12    # ceil(60/5)
+    assert engine.beats_to_act(CharLedger(行动速度=5, 行动值=20)) == 0      # 已到门槛
+    assert engine.beats_to_act(CharLedger(行动速度=7, 行动值=0)) == 3       # ceil(20/7)
+
+
+def test_action_order_slow_arriver_last(sess):
+    """负初始行动值的角色(模拟缓慢逼近的援兵)排在行动次序最后、预估拍最大。"""
+    sess.会变层.角色["scar"].行动值 = -40
+    order = engine.action_order(sess)
+    assert [t[0] for t in order][-1] == "scar"   # 慢的排最后
+    assert order[-1][3] > order[0][3]            # 预估拍递增
+    assert order[-1][3] >= 12                     # scar 约 12 拍后(缓慢逼近)
+
+
 def test_faction_mates(sess):
     """同阵营互看（在场、排除自己）；跨阵营不含。"""
     assert engine.faction_mates(sess, "player") == ["aqing"]   # 我方队友(scar=敌不含)

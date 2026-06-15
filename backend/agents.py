@@ -35,6 +35,16 @@ def _world_laws(s: Session) -> str:
     return "\n".join(f"- {law}" for law in s.世界观.法则) or "（无特殊法则）"
 
 
+def _action_order_brief(s: Session) -> str:
+    """程序算好的行动次序（谁还有几拍轮到），易读地喂给 agent；不让 AI 自己算行动值。"""
+    rows = engine.action_order(s)
+    if not rows:
+        return ""
+    parts = [f"{名}（{阵营}）{'即将行动' if 拍 <= 0 else f'约 {拍} 拍后行动'}"
+             for _cid, 名, 阵营, 拍 in rows]
+    return "；".join(parts)
+
+
 def _mates_brief(s: Session, cid: str) -> str:
     """同阵营在场队友的整张卡（含弱点）——同阵营彼此知底，供 NPC 协同；无队友返回空串。"""
     lines = []
@@ -60,6 +70,7 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
     中立提示 = "（你是中立第三方：不自动站队，按自己的动机目标权衡，可与任一方合作或翻脸）" if card.阵营 == "中立" else ""
     mates = _mates_brief(s, cid)
     队友段 = f"\n# 你的同阵营队友（你们彼此知底，可据此协同）\n{mates}\n" if mates else ""
+    序 = _action_order_brief(s)
     prompt = f"""你在一个跑团式交互游戏里扮演「{card.名}」。
 
 # 世界观
@@ -78,6 +89,9 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 {队友段}
 # 你目前感知到的局面
 {view}
+
+# 行动次序（程序算好，谁还有几拍轮到——把握节奏、谁将至/谁在逼近）
+{序}
 
 # 最近发生的事（你的记忆）
 （注：叙事为第三人称具名记述、不站任何一方；主角玩家是「{player_name}」，你扮演的是「{card.名}」。）
@@ -150,6 +164,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
     luck_txt = luck or "（非争议，不掷运气）"
     在场 = _roster(s)
     近期 = "\n".join(s.公开日志[-4:]) or "（开场）"
+    序 = _action_order_brief(s)
 
     prompt = f"""你是跑团游戏里**中立的裁决者**。不偏袒任何一方，只依「地面真相」与「世界观法则」裁决。
 
@@ -173,6 +188,9 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 
 # 最近几拍（判断是否在原地重复、该不该推进；现在是第 {s.回合数} 拍）
 {近期}
+
+# 行动次序（程序算好，谁还有几拍轮到——判断推进、以及「援兵/追兵/火势」等逼近之事何时兑现的参考）
+{序}
 
 # 裁决原则
 - **严守世界观法则与角色特质**：对有「防御特性（如刀枪不入/横练护体）」者，寻常刀剑拳脚无效或大打折扣；
@@ -239,6 +257,7 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
     在场 = _roster(s)
     pcard = s.角色卡.get(engine.PLAYER)
     player_name = pcard.名 if pcard else "玩家"
+    序 = _action_order_brief(s)
     分发 = "\n".join(f"- {cid}（{s.角色卡[cid].名}）：{lvl}"
                      for cid, lvl in adj.感知分发.items()) or "- 全体：全部"
 
@@ -282,6 +301,10 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 
 # 目前场面（公开锚点，保持一致、别写出矛盾）
 {公开锚点}
+
+# 行动节奏（程序算好，谁还有几拍轮到）
+{序}
+（用途：把握「谁快到、谁在逼近」——若有人还要好几拍才到（如赶来的援兵/追兵），可顺势铺垫其**逐渐逼近**的氛围（脚步声渐近、马蹄由远及近、尚在门外）；越近笔墨越紧。**但绝不可把「拍」这种游戏数字写进叙事**，只用自然笔法。）
 
 # 本拍行动者
 {行动者行}{反应行}
