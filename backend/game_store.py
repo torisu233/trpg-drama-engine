@@ -104,6 +104,7 @@ def snapshot(gid: str, s: Session) -> dict:
         "回合数": s.回合数,
         "结束": s.结束,
         "pending": s.pending,
+        "进行中": s.进行中,
         "公开日志": s.公开日志,
         "日志": s.日志,
         "在场": [{"id": cid, "名": s.角色卡[cid].名, "阵营": s.角色卡[cid].阵营}

@@ -297,6 +297,13 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str) -
     return e
 
 
+def log_pending_entry(s: Session, actor: str, intent, reaction=None) -> dict:
+    """进行中的拍（叙事未出）：与 log_action_entry 同样的阵营可见性，但 叙事=None。
+    用于延迟遮盖——LLM 每产出一件「玩家可见」的部分（我方行动/我方回应）就先推给前端显示。"""
+    e = log_action_entry(s, intent, reaction, actor, None)
+    return e
+
+
 # ───────────────── 分发叙事（GM 写、程序送） ─────────────────
 def distribute(s: Session, public: str, private: dict) -> None:
     s.公开日志.append(public)

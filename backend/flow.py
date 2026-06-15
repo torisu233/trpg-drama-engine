@@ -66,25 +66,39 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, l
 
 
 # ───────────────── 玩家拍 ─────────────────
-async def _player_action_beat(grok: GrokClient, s: Session, action: dict) -> None:
+async def _player_action_beat(grok: GrokClient, s: Session, action: dict):
+    """玩家行动拍（生成器）：玩家行动自己可见 → 先推一帧；队友回应可见也补帧，遮住裁决+叙事。"""
     intent = Intent(actor=PLAYER, **action)
     s.pending = None
     rtarget = engine.needs_reaction(s, intent)
+    s.进行中 = engine.log_pending_entry(s, PLAYER, intent)        # 玩家=我方，行动文本可见
+    yield s
     reaction = None
     if rtarget and rtarget != PLAYER:
         reaction = await agents.character_reaction(grok, s, rtarget, _incoming_desc(s, intent))
+        pend = engine.log_pending_entry(s, PLAYER, intent, reaction)
+        if pend["反应文本"]:                                       # 队友回应可见 → 补帧
+            s.进行中 = pend
+            yield s
     luck = engine.roll_luck() if engine.is_contested(s, intent, rtarget) else None
     await _resolve_beat(grok, s, intent, reaction, PLAYER, luck)
+    s.进行中 = None
+    yield s
 
 
-async def _player_reaction_beat(grok: GrokClient, s: Session, reaction_payload: dict) -> None:
+async def _player_reaction_beat(grok: GrokClient, s: Session, reaction_payload: dict):
+    """玩家回应拍（生成器）：玩家回应自己可见 → 先推一帧，遮住裁决+叙事。"""
     p = s.pending or {}
     intent = Intent(**p.get("intent", {}))
     actor = p.get("actor", "")
     luck = p.get("luck")
     s.pending = None
     react = Reaction(actor=PLAYER, **reaction_payload)
+    s.进行中 = engine.log_pending_entry(s, actor, intent, react)  # 玩家回应可见（原行动者若我方其行动也可见）
+    yield s
     await _resolve_beat(grok, s, intent, react, actor, luck)
+    s.进行中 = None
+    yield s
 
 
 # ───────────────── 推进（串流产生器） ─────────────────
@@ -118,11 +132,20 @@ async def _advance_stream(grok: GrokClient, s: Session):
             }
             yield s
             return
+        pend = engine.log_pending_entry(s, actor, intent)
+        if pend["行动文本"]:                       # 我方意图可见 → 提前显示，遮住后续
+            s.进行中 = pend
+            yield s
         reaction = None
         if rtarget:
             reaction = await agents.character_reaction(grok, s, rtarget, _incoming_desc(s, intent))
+            pend = engine.log_pending_entry(s, actor, intent, reaction)
+            if pend["反应文本"]:                   # 我方回应可见 → 补帧
+                s.进行中 = pend
+                yield s
         luck = engine.roll_luck() if engine.is_contested(s, intent, rtarget) else None
         await _resolve_beat(grok, s, intent, reaction, actor, luck)
+        s.进行中 = None
         yield s
 
 
@@ -135,14 +158,14 @@ async def advance(grok: GrokClient, s: Session) -> None:
 
 # ───────────────── 串流（Web 游玩主路径） ─────────────────
 async def stream_action(grok: GrokClient, s: Session, action: dict):
-    await _player_action_beat(grok, s, action)
-    yield s
+    async for _ in _player_action_beat(grok, s, action):
+        yield s
     async for _ in _advance_stream(grok, s):
         yield s
 
 
 async def stream_reaction(grok: GrokClient, s: Session, reaction: dict):
-    await _player_reaction_beat(grok, s, reaction)
-    yield s
+    async for _ in _player_reaction_beat(grok, s, reaction):
+        yield s
     async for _ in _advance_stream(grok, s):
         yield s

@@ -116,3 +116,19 @@ def test_log_entries_fog(sess):
 
     sys_e = engine.log_system_entry("【场景】酒馆")
     assert sys_e["行动者"] is None
+
+
+def test_log_pending_entry_fog(sess):
+    """延迟遮盖的「进行中」预告帧：叙事未出(None)，且沿用同样的阵营可见性——敌方意图绝不提前泄露。"""
+    pi = Intent(actor="player", 行动="掀翻桌子撞他", 目标="scar")
+    pe = engine.log_pending_entry(sess, "player", pi)
+    assert pe["叙事"] is None and pe["行动文本"] == "掀翻桌子撞他"   # 我方意图可提前显示
+
+    ei = Intent(actor="scar", 行动="偷偷拔刀", 目标="player")
+    ee = engine.log_pending_entry(sess, "scar", ei)
+    assert ee["行动者"] == "scar" and ee["行动文本"] is None        # 敌方意图不提前泄露
+
+    r_ally = Reaction(actor="aqing", 反应="接住你抛来的刀")
+    assert engine.log_pending_entry(sess, "player", pi, r_ally)["反应文本"] == "接住你抛来的刀"
+    r_foe = Reaction(actor="scar", 反应="挥刀格开")
+    assert engine.log_pending_entry(sess, "player", pi, r_foe)["反应文本"] is None  # 敌方回应不泄露

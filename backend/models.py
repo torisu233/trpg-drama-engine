@@ -101,6 +101,7 @@ class Session(BaseModel):
     回合数: int = 0
     pending: Optional[dict] = None                            # 等待玩家的状态
     结束: Optional[str] = None                                # 结束原因
+    进行中: Optional[dict] = None                             # 临时：当前拍已揭示的可见部分（行动/回应，叙事未出）；不入库
 
 
 class Scenario(BaseModel):

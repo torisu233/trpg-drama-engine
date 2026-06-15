@@ -55,7 +55,8 @@
             <div class="beat-input" v-if="e.反应文本">
               <span class="inp-tag">回应</span><span class="inp-who" v-if="e.反应者名">{{ e.反应者名 }}：</span>{{ e.反应文本 }}
             </div>
-            <div class="beat-narr">{{ e.叙事 }}</div>
+            <div v-if="e._pending" class="beat-narr muted">…裁决与叙事中…</div>
+            <div v-else class="beat-narr">{{ e.叙事 }}</div>
           </div>
         </div>
       </div>
@@ -73,7 +74,7 @@
         </template>
       </div>
 
-      <div v-if="g.busy" class="muted" style="margin-top:8px">…（裁决与叙事中，每拍约 10–15 秒）…</div>
+      <div v-if="g.busy && !(snap.进行中)" class="muted" style="margin-top:8px">…（裁决与叙事中，每拍约 10–15 秒）…</div>
 
       <!-- 结束 -->
       <div v-else-if="snap.结束" class="threat" style="margin-top:10px">场景结束：{{ snap.结束 }}</div>
@@ -133,11 +134,14 @@ const snap = computed(() => g.snap)
 const pendingType = computed(() => g.snap && g.snap.pending && g.snap.pending.type)
 const targets = computed(() => (g.snap?.在场 || []).filter((c) => c.id !== 'player'))
 // 结构化每拍日志；旧存档无「日志」时退回纯文本「公开日志」
+// 末尾追加「进行中」拍（延迟遮盖：已揭示的可见行动/回应 + 「裁决中」占位），叙事到了被正式拍替换
 const beats = computed(() => {
   const s = g.snap
   if (!s) return []
-  if (s.日志 && s.日志.length) return s.日志
-  return (s.公开日志 || []).map((line) => ({ 叙事: line, 行动者: null }))
+  const base = (s.日志 && s.日志.length)
+    ? s.日志
+    : (s.公开日志 || []).map((line) => ({ 叙事: line, 行动者: null }))
+  return s.进行中 ? [...base, { ...s.进行中, _pending: true }] : base
 })
 function factionClass(f) { return f === '我方' ? 'ally' : (f === '敌' ? 'foe' : '') }
 

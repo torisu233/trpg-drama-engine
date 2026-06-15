@@ -65,11 +65,12 @@ def _stream(gid: str, s, gen):
     """把 flow 的串流产生器逐拍包成 NDJSON；每拍用独立 DB session 存回。"""
     async def body():
         async for sess in gen:
-            db = SessionLocal()
-            try:
-                game_store.save_game(db, gid, sess)
-            finally:
-                db.close()
+            if not sess.进行中:                 # 预告帧（延迟遮盖用）只即时显示、不入库，断线不留半截脏状态
+                db = SessionLocal()
+                try:
+                    game_store.save_game(db, gid, sess)
+                finally:
+                    db.close()
             yield json.dumps(game_store.snapshot(gid, sess), ensure_ascii=False) + "\n"
     return StreamingResponse(body(), media_type="application/x-ndjson")
 
