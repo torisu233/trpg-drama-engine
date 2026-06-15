@@ -139,6 +139,7 @@ details.sec > summary { cursor: pointer; color: var(--gold); font-weight: 600; p
 .card.role { padding: 9px 10px; }
 .card.role.ally { border-color: #4d5a38; }
 .card.role.foe { border-color: var(--threat); }
+.card.role.neutral { border-color: #5a5238; }   /* 中立：中性褐边，区别于绿(我方)红(敌) */
 .role .small { padding: 1px 0; }
 .role .small b { color: var(--gold); font-weight: 600; }
 .role .weak { color: #f0c8a0; }

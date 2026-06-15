@@ -134,3 +134,27 @@ def test_log_pending_entry_fog(sess):
     assert engine.log_pending_entry(sess, "player", pi, r_ally)["反应文本"] == "接住你抛来的刀"
     r_foe = Reaction(actor="scar", 反应="挥刀格开")
     assert engine.log_pending_entry(sess, "player", pi, r_foe)["反应文本"] is None  # 敌方回应不泄露
+
+
+def test_faction_mates(sess):
+    """同阵营互看（在场、排除自己）；跨阵营不含。"""
+    assert engine.faction_mates(sess, "player") == ["aqing"]   # 我方队友(scar=敌不含)
+    assert engine.faction_mates(sess, "scar") == []            # 敌方仅一人
+
+
+def test_apply_delta_faction_change(sess):
+    """裁决的阵营变更就地改角色卡阵营（倒戈/投靠），影响同阵营判定。"""
+    assert sess.角色卡["scar"].阵营 == "敌"
+    engine.apply_delta(sess, Adjudication(阵营变更={"scar": "我方"}))
+    assert sess.角色卡["scar"].阵营 == "我方"
+    assert "scar" in engine.faction_mates(sess, "player")      # 倒戈后成我方队友
+
+
+def test_mates_brief_full_card_same_faction_only(sess):
+    """同阵营队友卡含弱点；跨阵营不泄露。"""
+    from backend import agents
+    engine.apply_delta(sess, Adjudication(阵营变更={"scar": "我方"}))
+    brief = agents._mates_brief(sess, "player")
+    assert "刀疤" in brief and "怕火" in brief                  # 我方队友给整张卡(含弱点)
+    engine.apply_delta(sess, Adjudication(阵营变更={"scar": "敌"}))
+    assert "怕火" not in agents._mates_brief(sess, "player")    # 敌方资料不泄露

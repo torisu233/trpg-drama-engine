@@ -35,6 +35,19 @@ def _world_laws(s: Session) -> str:
     return "\n".join(f"- {law}" for law in s.世界观.法则) or "（无特殊法则）"
 
 
+def _mates_brief(s: Session, cid: str) -> str:
+    """同阵营在场队友的整张卡（含弱点）——同阵营彼此知底，供 NPC 协同；无队友返回空串。"""
+    lines = []
+    for oid in engine.faction_mates(s, cid):
+        c = s.角色卡[oid]
+        lines.append(
+            f"- {c.名}（{c.阵营}{('/' + c.性别) if c.性别 else ''}）"
+            f"｜性格 {'、'.join(c.性格) or '—'}｜动机 {c.动机目标 or '—'}｜惯用手段 {'、'.join(c.行为偏好) or '—'}"
+            f"｜能力 {'、'.join(c.能力) or '—'}｜防御 {'、'.join(c.防御特性) or '—'}｜弱点 {'、'.join(c.弱点) or '—'}"
+        )
+    return "\n".join(lines)
+
+
 # ───────────────── 角色 agent：行动意图 ─────────────────
 async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
     card = s.角色卡[cid]
@@ -44,6 +57,9 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
     mem = f"【先前剧情摘要】{摘要}\n\n【最近发生】\n{recent}" if 摘要 else recent
     player_name = s.角色卡[engine.PLAYER].名 if engine.PLAYER in s.角色卡 else "玩家"
     阵营关系 = {"我方": "与玩家同阵营（倾向协作）", "敌": "与玩家敌对"}.get(card.阵营, "中立")
+    中立提示 = "（你是中立第三方：不自动站队，按自己的动机目标权衡，可与任一方合作或翻脸）" if card.阵营 == "中立" else ""
+    mates = _mates_brief(s, cid)
+    队友段 = f"\n# 你的同阵营队友（你们彼此知底，可据此协同）\n{mates}\n" if mates else ""
     prompt = f"""你在一个跑团式交互游戏里扮演「{card.名}」。
 
 # 世界观
@@ -58,8 +74,8 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 惯用手段：{"、".join(card.行为偏好)}
 你的本事：{"、".join(card.能力)}
 你心里清楚的弱点/顾忌：{"、".join(card.弱点) or "（无）"}
-你与玩家的关系：{阵营关系}（**依你的动机目标行事，手段随情境**）
-
+你与玩家的关系：{阵营关系}{中立提示}（**依你的动机目标行事，手段随情境**）
+{队友段}
 # 你目前感知到的局面
 {view}
 
@@ -79,9 +95,10 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 - 若你身负重伤或处于不利，可保守行动甚至放弃（行动填「按兵不动」）。
 - 想隐蔽地行动（使眼色、暗号）就把「隐蔽」设为 true。
 - 行动可以**有层次与质感**：把「你具体怎么做、怎么说、带什么神态情绪」写清楚（对话/交涉场景就给出**实际要说的话**）；可附带一个小动作（如说话同时使眼色）。但仍是**一个连贯的主要意图**，别硬塞多个重大动作；「目标」填主要对象。
+- **可主动倒戈/投靠（少用、要有理由）**：若剧情让你决定改换阵营（被说服、利益所驱、恩义、识时务投降…），把「阵营切换」填目标阵营（我方/敌/中立），并在「行动」里演出这个转变。这只是**提议**，是否生效由裁决裁定（投靠我方尤其要有足够理由才被接纳）；不切换就填 null。
 
 只输出 JSON：
-{{"行动":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","目标":"主要对象的角色id（在场者之一）或 null","隐蔽":false}}"""
+{{"行动":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","目标":"主要对象的角色id（在场者之一）或 null","隐蔽":false,"阵营切换":null}}"""
     out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
     out.actor = cid
     return out
@@ -92,12 +109,14 @@ async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: s
     card = s.角色卡[cid]
     view = engine.build_view(s, cid)
     性别txt = f"，{card.性别}" if card.性别 else ""
+    mates = _mates_brief(s, cid)
+    队友段 = f"\n# 你的同阵营队友（彼此知底）\n{mates}\n" if mates else ""
     prompt = f"""你在跑团游戏里扮演「{card.名}」（{card.阵营}{性别txt}）。
 性格：{"、".join(card.性格)}；说话风格：{card.说话风格}；本事：{"、".join(card.能力)}；惯用手段：{"、".join(card.行为偏好)}。
 
 # 世界观
 {_world_brief(s)}
-
+{队友段}
 # 你感知到的局面
 {view}
 
@@ -182,6 +201,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 - **同一事实只记一处**：招供/承诺/情报记成「社会事实」即可，**不要又拷贝一份到角色身心状况**。
 - 可见性只能填这四种之一：`public` / `gm` / `faction:阵营` / `self:角色id`（不要自创其他值）。
 - 感知分发：判断「谁察觉到这件事、察觉到多少」。昏迷者收不到；重伤分心可能漏看；背后动作可能未察觉。
+- **阵营变更（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「阵营切换」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「阵营变更」(char_id→新阵营 我方/敌/中立)；**投靠「我方」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 GM摘要 点出这次转变，让叙事交代清楚。阵营只用 我方/敌/中立。
 
 # 输出（只输出 JSON）
 {{
@@ -196,6 +216,7 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
  }},
  "速度更新": {{"char_id": 整数速度（重伤3/濒死2/昏迷0，正常不填）}},
  "感知更新": {{"char_id": "如 蒙眼/昏迷/重伤分心"}},
+ "阵营变更": {{"char_id": "我方/敌/中立（仅在批准倒戈/投靠/被策反时填，否则留空）"}},
  "感知分发": {{"char_id": "全部 / 部分:只看到表象 / 无"}},
  "GM摘要": "给叙事者的一句话地面真相（这拍实际发生了什么、收在什么未决张力上：威胁/疑点/抉择）"
 }}"""
@@ -395,7 +416,7 @@ async def author_turn(grok: GrokClient, sc: Scenario, history: list, user_msg: s
 - **埋钩子与张力**：开场 hook 要逼玩家立刻回应；用场景事实/社会事实提供筹码与变量（债务、人质、恩怨、出口封死）。
 - 会变层初始化：每个在场角色的「姿势位置、行动速度(玩家7/常5/快6/负伤4)、感知能力」；必要时设「初始行动值」做先机（埋伏者高）；空间关系与场景事实；社会事实。
 - 可见性只用：public / gm / faction:阵营 / self:角色id。
-- **阵营只用「我方」或「敌」**（玩家与队友＝我方，对手＝敌；引擎据此判敌我，不可自创如「中立/敌对」）。
+- **阵营只用「我方」「敌」「中立」三选一**（玩家与队友＝我方，对手＝敌，掮客/线人/旁观者等第三方＝中立；引擎据此判敌我，不可自创其他值）。阵营可在游玩中由角色倒戈/被策反而改变，你只需设好初始阵营。
 - 角色 id 用简短英文（如 player/aqing/scar）；玩家角色的「扮演」填「玩家」，其余填「agent」。
 - 能力/防御特性/弱点一律用**质性描述**，**不要写数值**（写「旧伤复发时使不上力」而非「行动值-2」）。
 

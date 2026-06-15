@@ -17,7 +17,7 @@
 
       <!-- 在场角色：我方详尽 / 敌方仅可见 -->
       <div class="cards rolecards" v-if="snap.角色 && snap.角色.length">
-        <div v-for="c in snap.角色" :key="c.id" class="card role" :class="{ ally: c.是我方, foe: !c.是我方 }">
+        <div v-for="c in snap.角色" :key="c.id" class="card role" :class="roleClass(c)">
           <div class="card-title">
             {{ c.名 }}
             <span class="muted small">· {{ c.阵营 }}<template v-if="c.性别">·{{ c.性别 }}</template><template v-if="c.是自己">·你</template></span>
@@ -154,6 +154,8 @@ function stanceLabel(e) {
   if (e.阵营 === '中立') return '中立'
   return e.阵营 || ''
 }
+// 角色面板边框：我方=ally(绿)、中立=neutral(中性)、其余=foe(红)
+function roleClass(c) { return c.是我方 ? 'ally' : (c.阵营 === '中立' ? 'neutral' : 'foe') }
 
 const act = ref({ 行动: '', 目标: '', 隐蔽: false })
 const reaction = ref('')

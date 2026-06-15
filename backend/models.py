@@ -121,6 +121,7 @@ class Intent(BaseModel):
     行动: str                          # 一句话：想做什么（含具体做法）
     目标: Optional[str] = None         # char_id 或 None
     隐蔽: bool = False                 # 想瞒过敌人（表象/真意由裁决拆）
+    阵营切换: Optional[str] = None      # 提议自己倒戈/投靠到哪个阵营（我方/敌/中立）；由裁决裁定是否生效
 
 
 class Reaction(BaseModel):
@@ -155,6 +156,7 @@ class Adjudication(BaseModel):
     ledger_delta: LedgerDelta = Field(default_factory=LedgerDelta)
     速度更新: Dict[str, int] = Field(default_factory=dict)
     感知更新: Dict[str, str] = Field(default_factory=dict)
+    阵营变更: Dict[str, str] = Field(default_factory=dict)   # char_id → 新阵营；裁决批准的倒戈/投靠/被策反
     # B. 知识裁决
     感知分发: Dict[str, str] = Field(default_factory=dict)  # char_id -> 全部/部分:.../无
     # C. 给 GM

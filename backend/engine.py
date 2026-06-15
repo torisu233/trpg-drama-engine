@@ -189,6 +189,15 @@ def known_characters(s: Session, viewer: str = PLAYER) -> list:
     return out
 
 
+def faction_mates(s: Session, cid: str) -> List[str]:
+    """与 cid 同阵营、在场的其他角色 id（同阵营互看整张卡用；跨阵营不含）。"""
+    me = s.角色卡.get(cid)
+    if not me:
+        return []
+    return [oid for oid in s.scene.在场
+            if oid != cid and oid in s.角色卡 and s.角色卡[oid].阵营 == me.阵营]
+
+
 def ground_truth(s: Session) -> str:
     """给裁决的完整地面真相（全可见，含 gm 秘密）。"""
     lines = [f"【场景】{s.scene.地点}"]
@@ -267,6 +276,10 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
     for cid, cap in adj.感知更新.items():
         if cid in s.会变层.角色:
             s.会变层.角色[cid].感知能力 = cap
+    # 阵营变更（倒戈/投靠/被策反）：就地改角色卡阵营，影响今后的同阵营可见性
+    for cid, fac in adj.阵营变更.items():
+        if cid in s.角色卡 and fac:
+            s.角色卡[cid].阵营 = fac
 
 
 # ───────────────── 结构化日志条目（行动者 + 我方输入文本，供前端展示） ─────────────────
