@@ -2,7 +2,7 @@
 
 instructor 的 max_retries 提供「结构化输出验证失败时自动把错误回馈给模型重问」的保险，
 让四个 agent 的 JSON 输出更稳（也兜住 DeepSeek JSON mode 偶发空内容）。对外维持相同的 call() 接口。
-env 名沿用 GROK_*（GROK_API_KEY/GROK_API_BASE_URL/GROK_MODEL），值已切到 DeepSeek。
+env：LLM_API_KEY / LLM_API_BASE_URL / LLM_MODEL（值为 DeepSeek）。
 """
 import os
 import logging
@@ -21,16 +21,16 @@ class GrokError(Exception):
 
 class GrokClient:
     def __init__(self, timeout: float = 60.0, max_retries: int = 3):
-        api_key = os.getenv("GROK_API_KEY")
-        base_url = os.getenv("GROK_API_BASE_URL", "https://api.deepseek.com")
+        api_key = os.getenv("LLM_API_KEY")
+        base_url = os.getenv("LLM_API_BASE_URL", "https://api.deepseek.com")
         if not api_key:
-            raise ValueError("GROK_API_KEY 未设置，请在 .env 配置")
+            raise ValueError("LLM_API_KEY 未设置，请在 .env 配置")
         # DeepSeek 与 OpenAI API 兼容
         self._raw = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
         # JSON 模式：强制 json_object 输出 + Pydantic 验证；失败自动重问
         self.client = instructor.from_openai(self._raw, mode=instructor.Mode.JSON)
         self.max_retries = max_retries
-        self.model_default = os.getenv("GROK_MODEL", "deepseek-chat")
+        self.model_default = os.getenv("LLM_MODEL", "deepseek-chat")
 
     async def call(
         self,

@@ -49,7 +49,7 @@ app.include_router(feedback.router)     # /api/feedback*（用户+admin 反馈�
 
 @app.get("/api/health")
 async def health():
-    return {"ok": True, "model": config.GROK_MODEL}
+    return {"ok": True, "model": config.LLM_MODEL}
 
 
 # 发布用：若前端已 build，直接供其 dist（前端与 API 同源，免 CORS）

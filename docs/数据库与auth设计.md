@@ -38,7 +38,7 @@
 ## 环境变量变化
 - **移除** `APP_PASSWORD`（被 auth 取代）。
 - **新增** `DATABASE_URL`、`JWT_SECRET`、`ADMIN_USERNAME`、`ADMIN_PASSWORD`。
-- 保留 `GROK_API_KEY`。
+- 保留 LLM 密钥 `LLM_API_KEY`（旧名 GROK_API_KEY）。
 
 ## 架构要点
 - **移除 `game_store._cache`**：DB 为唯一真相，每请求从 DB 载入→改→存回；串流时逐拍存回。多 ECS task 才一致（这正是上云要 DB 的原因）。

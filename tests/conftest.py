@@ -14,11 +14,11 @@ pytest 就会自动调用并注入。好处是每个测试拿到全新、隔离�
 - 本地需先 `docker compose up -d --wait` 起 PG（host 5433）；可用 TEST_DATABASE_URL 覆盖。
 
 注意：离线测试从不真的呼叫 Grok（酒馆玩家速度最高、开局即停在玩家决策点），
-但 GrokClient 建构需要 GROK_API_KEY，故在此设一个 dummy，让建构不报错、也不连网。
+但 GrokClient 建构需要 LLM_API_KEY，故在此设一个 dummy，让建构不报错、也不连网。
 """
 import os
 
-os.environ.setdefault("GROK_API_KEY", "test-dummy-key")   # 必须在 import backend 之前
+os.environ.setdefault("LLM_API_KEY", "test-dummy-key")   # 必须在 import backend 之前
 os.environ.setdefault("ADMIN_PASSWORD", "")               # 不自动 seed admin，测试自造数据
 # 测试连独立库 trpg_test（默认本地 docker PG:5433），绝不污染本地 trpg 的真实存档
 os.environ["DATABASE_URL"] = os.environ.get(

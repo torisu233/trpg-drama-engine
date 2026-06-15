@@ -113,7 +113,7 @@ jobs:
           security-groups: ${{ secrets.APP_SG }}         # 自建 app-SG id（RDS 放行它）
           environment-variables: |
             [
-              {"name":"GROK_API_KEY","value":"${{ secrets.GROK_API_KEY }}"},
+              {"name":"LLM_API_KEY","value":"${{ secrets.LLM_API_KEY }}"},
               {"name":"DATABASE_URL","value":"${{ secrets.DATABASE_URL }}"},
               {"name":"JWT_SECRET","value":"${{ secrets.JWT_SECRET }}"},
               {"name":"ADMIN_USERNAME","value":"${{ secrets.ADMIN_USERNAME }}"},

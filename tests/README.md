@@ -22,7 +22,7 @@ Postgres service container（见 `.github/workflows/ci.yml` test job）。纯逻
 | 前端 | Vue | 暂无（未来 Vitest） | — |
 
 ## 文件分工
-- `conftest.py` — 夹具：`sess`（全新酒馆 Session，纯逻辑）/ `client`（TestClient，不进 lifespan→不 seed）/ `db`（直连 session，取用前 TRUNCATE 清库）/ `make_user`·`user_headers`·`admin_headers`（造用户发 JWT）/ `tavern_scenario`（落地一份已发布酒馆剧本，返回 sid+owner headers）。`_db_ready`（session 级）首次建测试库+建表。开头设 dummy `GROK_API_KEY`、空 `ADMIN_PASSWORD`、测试库 `DATABASE_URL`。
+- `conftest.py` — 夹具：`sess`（全新酒馆 Session，纯逻辑）/ `client`（TestClient，不进 lifespan→不 seed）/ `db`（直连 session，取用前 TRUNCATE 清库）/ `make_user`·`user_headers`·`admin_headers`（造用户发 JWT）/ `tavern_scenario`（落地一份已发布酒馆剧本，返回 sid+owner headers）。`_db_ready`（session 级）首次建测试库+建表。开头设 dummy `LLM_API_KEY`、空 `ADMIN_PASSWORD`、测试库 `DATABASE_URL`。
 - `test_engine.py` — 单元：行动条 / 迷雾 / 两轴（parametrize）/ delta / TTL / 结构化日志。
 - `test_flow.py` — 每拍维护：摘要压缩 / 账本整理（`monkeypatch` 换掉会打 Grok 的函数）。
 - `test_scenario.py` — 剧本来回无损 + 编剧合并（空栏不误清）。

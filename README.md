@@ -41,7 +41,7 @@ docker-compose.yml  本地 Postgres（host 5433）+ adminer
 cd trpg-drama-engine
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # 含运行期 + pytest
-Copy-Item .env.example .env        # 填 GROK_API_KEY；本机想要 admin 就填 ADMIN_PASSWORD
+Copy-Item .env.example .env        # 填 LLM_API_KEY；本机想要 admin 就填 ADMIN_PASSWORD
 ```
 
 ## 跑起来（本地三件套）

@@ -24,8 +24,8 @@ CONSOLIDATE_THRESHOLD = 4     # 某清单的「公开且持久」条目达此数
 LUCK_TIERS = ["霉运", "平", "好运"]
 LUCK_WEIGHTS = [0.25, 0.50, 0.25]
 
-# ── LLM 服务端（OpenAI 兼容；现用 DeepSeek。env 名沿用 GROK_* 以免改动云端 secret 接线）──
-GROK_MODEL = os.getenv("GROK_MODEL", "deepseek-chat")   # DeepSeek V4 Flash(非思考)；2026/07/24 后旧名弃用，改 deepseek-v4-flash
+# ── LLM 服务端（OpenAI 兼容；现用 DeepSeek）──
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")   # DeepSeek V4 Flash(非思考)；2026/07/24 后旧名弃用，改 deepseek-v4-flash
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "2000"))
 TEMP_ADJUDICATOR = 0.35       # 裁决要稳、可审计
 TEMP_NARRATOR = 0.9           # 叙事要生动
