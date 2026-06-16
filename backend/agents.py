@@ -75,7 +75,8 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
     摘要 = s.摘要.get(cid, "")
     recent = "\n".join(s.记忆.get(cid, [])) or "（刚开场）"
     mem = f"【先前剧情摘要】{摘要}\n\n【最近发生】\n{recent}" if 摘要 else recent
-    player_name = s.角色卡[engine.PLAYER].名 if engine.PLAYER in s.角色卡 else "玩家"
+    pcard = s.角色卡.get(engine.player_id(s))
+    player_name = pcard.名 if pcard else "玩家"
     阵营关系 = {"我方": "与玩家同阵营（倾向协作）", "敌": "与玩家敌对"}.get(card.阵营, "中立")
     中立提示 = "（你是中立第三方：不自动站队，按自己的动机目标权衡，可与任一方合作或翻脸）" if card.阵营 == "中立" else ""
     mates = _mates_brief(s, cid)
@@ -266,7 +267,7 @@ def _vis_label(v: str) -> str:
 async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Intent,
                   reaction: Optional[Reaction] = None) -> Narration:
     在场 = _roster(s)
-    pcard = s.角色卡.get(engine.PLAYER)
+    pcard = s.角色卡.get(engine.player_id(s))
     player_name = pcard.名 if pcard else "玩家"
     序 = _action_order_brief(s)
     分发 = _perception_brief(s, adj.感知分发)

@@ -133,7 +133,7 @@ const g = useGameStore()
 const route = useRoute()
 const snap = computed(() => g.snap)
 const pendingType = computed(() => g.snap && g.snap.pending && g.snap.pending.type)
-const targets = computed(() => (g.snap?.在场 || []).filter((c) => c.id !== 'player'))
+const targets = computed(() => (g.snap?.在场 || []).filter((c) => c.扮演 !== '玩家'))
 // 结构化每拍日志；旧存档无「日志」时退回纯文本「公开日志」
 // 末尾追加「进行中」拍（延迟遮盖：已揭示的可见行动/回应 + 「裁决中」占位），叙事到了被正式拍替换
 const beats = computed(() => {

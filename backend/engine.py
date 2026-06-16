@@ -30,6 +30,14 @@ def resolve_id(s: Session, key) -> Optional[str]:
     return None
 
 
+def player_id(s: Session) -> str:
+    """玩家角色 id：靠语义字段「扮演==玩家」识别，**不依赖写死的 id**。找不到则兜底回 PLAYER。"""
+    for cid, c in s.角色卡.items():
+        if c.扮演 == "玩家":
+            return cid
+    return PLAYER
+
+
 # ───────────────── 行动条 ─────────────────
 def _tick(s: Session) -> None:
     for cl in s.会变层.角色.values():
@@ -52,8 +60,9 @@ def pick_actor(s: Session) -> str:
              if cl.行动值 >= config.ACTION_THRESHOLD]
     if not ready:                             # 没人达门槛（异常）→ 取行动值最高者兜底
         ready = [max(actors, key=lambda c: actors[c].行动值)]
-    if PLAYER in ready:                       # 平手：玩家优先
-        return PLAYER
+    pid = player_id(s)
+    if pid in ready:                          # 平手：玩家优先
+        return pid
     return max(ready, key=lambda c: actors[c].行动值)  # 否则行动值高者
 
 
@@ -107,8 +116,8 @@ def needs_reaction(s: Session, intent) -> Optional[str]:
     tgt = target_char(s, intent)
     if not tgt:
         return None
-    if tgt == PLAYER:
-        return PLAYER                       # 对玩家一定收
+    if tgt == player_id(s):
+        return tgt                          # 对玩家一定收
     if _perceives(s, tgt) and _can_oppose(s, tgt):
         return tgt
     return None
@@ -189,8 +198,9 @@ def build_view(s: Session, viewer: str) -> str:
     return "\n".join(lines)
 
 
-def player_situation(s: Session, viewer: str = PLAYER) -> dict:
+def player_situation(s: Session, viewer: Optional[str] = None) -> dict:
     """玩家可见的环境与社会面（迷雾过滤）：场景/场面/约定情报/我方计策。结构化给前端。"""
+    viewer = viewer or player_id(s)
     fac = s.角色卡[viewer].阵营
     sc = s.会变层.场景
     return {
@@ -201,11 +211,12 @@ def player_situation(s: Session, viewer: str = PLAYER) -> dict:
     }
 
 
-def known_characters(s: Session, viewer: str = PLAYER) -> list:
+def known_characters(s: Session, viewer: Optional[str] = None) -> list:
     """玩家所知的在场角色（结构化）。
     - 同阵营（含自己）：给完整角色卡——能力/防御/弱点/动机等，对队友本就知情。
     - 敌方：只给可见状态——底细是要靠观察发现的秘密，不注入。
     """
+    viewer = viewer or player_id(s)
     fac = s.角色卡[viewer].阵营
     out = []
     for cid in s.scene.在场:

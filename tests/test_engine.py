@@ -192,17 +192,26 @@ def test_distribute_private_by_name(sess):
     assert sess.记忆["scar"][-1] == "公开叙事"
 
 
-def test_session_normalizes_player_and_autofills_ledger():
-    """复现卡死剧本的形状：玩家 id 非 'player' + 会变层.角色 为空 → 仍可玩、不死循环。"""
+def test_player_id_by_role(sess):
+    """玩家身份靠「扮演==玩家」识别，不依赖写死 id。"""
+    assert engine.player_id(sess) == "player"      # tavern 玩家恰好 id=player
+    sess.角色卡["player"].扮演 = "agent"
+    sess.角色卡["aqing"].扮演 = "玩家"
+    assert engine.player_id(sess) == "aqing"       # 改扮演后认 aqing，不看 id
+
+
+def test_session_autofills_ledger_no_id_rewrite():
+    """复现卡死剧本形状：玩家 id 非 'player' + 会变层.角色 为空 → 补局面、不改 id、可玩不卡死。"""
     from backend.models import Scenario, CharCard, Scene
     from backend import scenario as scen
     sc = Scenario(id="t", scene=Scene(id="s", 在场=["利拉特亚"]),
                   角色卡={"利拉特亚": CharCard(名="0", 阵营="我方", 扮演="玩家")})
     s = scen.session_from_scenario(sc)
-    assert "player" in s.角色卡 and "利拉特亚" not in s.角色卡   # 玩家 id 归一化
-    assert s.scene.在场 == ["player"]
-    assert "player" in s.会变层.角色                            # 自动补了初始局面
-    assert engine.pick_actor(s) == "player"                    # 不卡死且识别为玩家
+    assert "利拉特亚" in s.角色卡 and "player" not in s.角色卡   # id 不被改写
+    assert s.scene.在场 == ["利拉特亚"]
+    assert "利拉特亚" in s.会变层.角色                          # 自动补了初始局面
+    assert engine.player_id(s) == "利拉特亚"                    # 靠扮演识别玩家
+    assert engine.pick_actor(s) == "利拉特亚"                   # 不卡死、识别为玩家
 
 
 def test_pick_actor_empty_raises(sess):

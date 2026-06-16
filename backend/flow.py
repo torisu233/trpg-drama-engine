@@ -8,7 +8,6 @@
 from .grok_client import GrokClient
 from .models import Session, Intent, Reaction
 from . import engine, agents, config
-from .engine import PLAYER
 
 
 def _incoming_desc(s: Session, intent: Intent) -> str:
@@ -68,20 +67,21 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, l
 # ───────────────── 玩家拍 ─────────────────
 async def _player_action_beat(grok: GrokClient, s: Session, action: dict):
     """玩家行动拍（生成器）：玩家行动自己可见 → 先推一帧；队友回应可见也补帧，遮住裁决+叙事。"""
-    intent = Intent(actor=PLAYER, **action)
+    pid = engine.player_id(s)
+    intent = Intent(actor=pid, **action)
     s.pending = None
     rtarget = engine.needs_reaction(s, intent)
-    s.进行中 = engine.log_pending_entry(s, PLAYER, intent)        # 玩家=我方，行动文本可见
+    s.进行中 = engine.log_pending_entry(s, pid, intent)           # 玩家=我方，行动文本可见
     yield s
     reaction = None
-    if rtarget and rtarget != PLAYER:
+    if rtarget and rtarget != pid:
         reaction = await agents.character_reaction(grok, s, rtarget, _incoming_desc(s, intent))
-        pend = engine.log_pending_entry(s, PLAYER, intent, reaction)
+        pend = engine.log_pending_entry(s, pid, intent, reaction)
         if pend["反应文本"]:                                       # 队友回应可见 → 补帧
             s.进行中 = pend
             yield s
     luck = engine.roll_luck() if engine.is_contested(s, intent, rtarget) else None
-    await _resolve_beat(grok, s, intent, reaction, PLAYER, luck)
+    await _resolve_beat(grok, s, intent, reaction, pid, luck)
     s.进行中 = None
     yield s
 
@@ -93,7 +93,7 @@ async def _player_reaction_beat(grok: GrokClient, s: Session, reaction_payload: 
     actor = p.get("actor", "")
     luck = p.get("luck")
     s.pending = None
-    react = Reaction(actor=PLAYER, **reaction_payload)
+    react = Reaction(actor=engine.player_id(s), **reaction_payload)
     s.进行中 = engine.log_pending_entry(s, actor, intent, react)  # 玩家回应可见（原行动者若我方其行动也可见）
     yield s
     await _resolve_beat(grok, s, intent, react, actor, luck)
@@ -106,6 +106,7 @@ async def _advance_stream(grok: GrokClient, s: Session):
     """逐个 NPC 拍推进，每拍 yield 一次 session；停在玩家决策点或结束时 yield 后返回。"""
     if s.结束:
         return
+    pid = engine.player_id(s)
     while True:
         end = engine.check_end(s)
         if end:
@@ -115,13 +116,13 @@ async def _advance_stream(grok: GrokClient, s: Session):
             yield s
             return
         actor = engine.pick_actor(s)
-        if actor == PLAYER:
+        if actor == pid:
             s.pending = {"type": "player_action"}
             yield s
             return
         intent = await agents.character_intent(grok, s, actor)
         rtarget = engine.needs_reaction(s, intent)
-        if rtarget == PLAYER:
+        if rtarget == pid:
             luck = engine.roll_luck() if engine.is_contested(s, intent, rtarget) else None
             s.pending = {
                 "type": "player_reaction",

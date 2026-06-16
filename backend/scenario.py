@@ -89,23 +89,14 @@ def apply_author_reply(sc: Scenario, rep) -> str:
 def session_from_scenario(sc: Scenario) -> Session:
     """把 Scenario 包成全新可玩 Session（深拷贝静态数据，初始化运行期字段）。
 
-    两道兜底，避免「不完整剧本」让游戏卡死/失常：
-    - 玩家角色 id 归一化为 "player"（引擎以此为锚）——作者用了别的 id（如角色名）也能玩；
-    - 在场角色缺「初始局面（会变层）」的补默认，否则行动条无人可行动会死循环。
+    兜底：在场角色缺「初始局面（会变层）」的补默认，否则行动条无人可行动会死循环。
+    （玩家身份靠「扮演==玩家」识别，不依赖写死 id，故无需改写角色 id。）
     """
     scene = sc.scene.model_copy(deep=True)
     角色卡 = {k: v.model_copy(deep=True) for k, v in sc.角色卡.items()}
     会变层 = sc.会变层.model_copy(deep=True)
 
-    # 1) 玩家 id 归一化为 "player"
-    pid = next((cid for cid, c in 角色卡.items() if c.扮演 == "玩家"), None)
-    if pid and pid != engine.PLAYER and engine.PLAYER not in 角色卡:
-        角色卡[engine.PLAYER] = 角色卡.pop(pid)
-        scene.在场 = [engine.PLAYER if x == pid else x for x in scene.在场]
-        if pid in 会变层.角色:
-            会变层.角色[engine.PLAYER] = 会变层.角色.pop(pid)
-
-    # 2) 在场角色缺初始局面 → 补默认（玩家略快）
+    # 在场角色缺初始局面 → 补默认（玩家略快）
     for cid in scene.在场:
         if cid in 角色卡 and cid not in 会变层.角色:
             spd = config.SPEED_PLAYER if 角色卡[cid].扮演 == "玩家" else config.SPEED_NORMAL
