@@ -43,3 +43,32 @@ def test_ledger_consolidate(sess, monkeypatch):
     assert "刀疤在等同伙" in 社                       # gm 不被整理
     assert len(社) == 2                              # 5 公开合 1 + 保留 gm 1
     assert len(sess.会变层.角色["player"].身心状况) == 1   # 带 TTL 的瞬态不整理
+
+
+def test_consolidate_state_uses_lower_threshold(sess, monkeypatch):
+    """身心状况用低阈值(2)：2 条近义即合并；1 条不动；场景事实仍用高阈值(4)：3 条不动。"""
+    sess.会变层.角色["scar"].身心状况 = [          # 2 条公开持久 → 达状态阈值 2
+        Condition(内容="恐惧加剧，可能崩溃招供", 可见性="public"),
+        Condition(内容="被火逼近，惧色更甚", 可见性="public"),
+    ]
+    sess.会变层.角色["aqing"].身心状况 = [          # 仅 1 条 → 不达阈值 2
+        Condition(内容="独一份的状态", 可见性="public"),
+    ]
+    sess.会变层.场景.场景事实 = [                    # 3 条公开持久 → 不达场景阈值 4
+        Condition(内容=f"独立环境事实#{i}", 可见性="public") for i in range(3)
+    ]
+
+    calls = []
+    async def fake(grok, s, label, conds):
+        calls.append(label)
+        return [Condition(内容="恐惧（已合并）", 可见性="public", 来源="整理")]
+    monkeypatch.setattr(agents, "consolidate_conditions", fake)
+
+    asyncio.run(flow._maybe_consolidate(None, sess))
+
+    assert any("刀疤" in l and "身心状况" in l for l in calls)             # 刀疤 2 条 → 触发合并
+    assert [c.内容 for c in sess.会变层.角色["scar"].身心状况] == ["恐惧（已合并）"]
+    assert not any("阿青" in l for l in calls)                            # 阿青 1 条 < 2 → 不触发
+    assert len(sess.会变层.角色["aqing"].身心状况) == 1
+    assert "场景事实" not in calls                                        # 场景事实 3 < 4 → 不触发
+    assert len(sess.会变层.场景.场景事实) == 3

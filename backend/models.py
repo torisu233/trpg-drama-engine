@@ -97,7 +97,7 @@ class Session(BaseModel):
     记忆: Dict[str, List[str]] = Field(default_factory=dict)   # 各角色近期逐字叙事（滚动窗）
     摘要: Dict[str, str] = Field(default_factory=dict)          # 各角色「先前剧情」滚动摘要
     公开日志: List[str] = Field(default_factory=list)           # 给玩家看的叙事流（纯文本，供记忆/裁决/向后兼容）
-    日志: List[dict] = Field(default_factory=list)              # 结构化每拍：{叙事,行动者,行动者名,阵营,行动文本(我方),反应文本(我方)…}
+    日志: List[dict] = Field(default_factory=list)              # 结构化每拍：{叙事,行动者,行动者名,阵营,行动文本(按 visible_action_text 分流),反应文本(我方)…}
     回合数: int = 0
     pending: Optional[dict] = None                            # 等待玩家的状态
     结束: Optional[str] = None                                # 结束原因
@@ -159,6 +159,9 @@ class Adjudication(BaseModel):
     阵营变更: Dict[str, str] = Field(default_factory=dict)   # char_id → 新阵营；裁决批准的倒戈/投靠/被策反
     # B. 知识裁决
     感知分发: Dict[str, str] = Field(default_factory=dict)  # char_id -> 全部/部分:.../无
+    # 隐蔽行动的表象拆分（仅当本拍行动 隐蔽=True 时有意义）
+    识破: bool = False                # 隐蔽是否被识破（看穿真意）；True=暴露，False=蒙混过关
+    表象: str = ""                    # 隐蔽且「未被识破」时，旁观者看到的伪装明面动作；被识破/非隐蔽时留空
     # C. 给 GM
     GM摘要: str = ""
 

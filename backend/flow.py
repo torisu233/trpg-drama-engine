@@ -15,15 +15,27 @@ def _incoming_desc(s: Session, intent: Intent) -> str:
     return f"{name}：{intent.行动}"
 
 
+def _incoming_for_player(s: Session, intent: Intent) -> str:
+    """玩家被点名回应时看到的「来袭」描述。敌方**隐蔽**行动不泄露真意——
+    表象要等裁决才生成，此刻只给非揭示的预警；开放行动与我方行动照常给具体内容。"""
+    card = s.角色卡.get(intent.actor)
+    name = card.名 if card else intent.actor
+    ally = bool(card and card.阵营 == "我方")
+    if getattr(intent, "隐蔽", False) and not ally:
+        return f"{name} 似有异动，正冲你而来"
+    return f"{name}：{intent.行动}"
+
+
 # ───────────────── 每拍维护 ─────────────────
-async def _consolidate_if(grok: GrokClient, s: Session, label: str, conds: list) -> list:
+async def _consolidate_if(grok: GrokClient, s: Session, label: str, conds: list,
+                          threshold: int = config.CONSOLIDATE_THRESHOLD) -> list:
     mergeable, keep = [], []
     for c in conds:
         if c.剩余拍数 is None and c.可见性 == "public":
             mergeable.append(c)
         else:
             keep.append(c)
-    if len(mergeable) < config.CONSOLIDATE_THRESHOLD:
+    if len(mergeable) < threshold:
         return conds
     merged = await agents.consolidate_conditions(grok, s, label, mergeable)
     return keep + merged
@@ -31,11 +43,14 @@ async def _consolidate_if(grok: GrokClient, s: Session, label: str, conds: list)
 
 async def _maybe_consolidate(grok: GrokClient, s: Session) -> None:
     sc = s.会变层.场景
+    # 场景三列保持高阈值（多条独立环境事实并存，降太低易误并）
     sc.社会事实 = await _consolidate_if(grok, s, "社会事实/承诺/情报", sc.社会事实)
     sc.场景事实 = await _consolidate_if(grok, s, "场景事实", sc.场景事实)
     sc.空间关系 = await _consolidate_if(grok, s, "空间关系", sc.空间关系)
+    # 角色身心状况：同一人状态易近义递进堆栈，用低阈值更早兜
     for cid, cl in s.会变层.角色.items():
-        cl.身心状况 = await _consolidate_if(grok, s, f"{s.角色卡[cid].名} 身心状况", cl.身心状况)
+        cl.身心状况 = await _consolidate_if(grok, s, f"{s.角色卡[cid].名} 身心状况",
+                                            cl.身心状况, threshold=config.CONSOLIDATE_THRESHOLD_STATE)
 
 
 async def _maybe_compress(grok: GrokClient, s: Session) -> None:
@@ -56,7 +71,8 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, l
     engine.apply_delta(s, adj)
     narr = await agents.narrate(grok, s, adj, intent, reaction)
     engine.distribute(s, narr.公开, narr.私密)
-    s.日志.append(engine.log_action_entry(s, intent, reaction, actor, narr.公开))
+    s.日志.append(engine.log_action_entry(s, intent, reaction, actor, narr.公开,
+                                          表象=adj.表象, 识破=adj.识破))
     engine.consume_turn(s, actor)
     s.回合数 += 1
     engine.expire_transients(s)
@@ -129,12 +145,12 @@ async def _advance_stream(grok: GrokClient, s: Session):
                 "intent": intent.model_dump(),
                 "actor": actor,
                 "luck": luck,
-                "incoming": _incoming_desc(s, intent),
+                "incoming": _incoming_for_player(s, intent),
             }
             yield s
             return
         pend = engine.log_pending_entry(s, actor, intent)
-        if pend["行动文本"]:                       # 我方意图可见 → 提前显示，遮住后续
+        if pend["行动文本"]:                       # 我方意图或敌方开放行动可见 → 提前显示，遮住后续
             s.进行中 = pend
             yield s
         reaction = None

@@ -101,39 +101,77 @@ def test_gender_in_views(sess):
 
 
 def test_log_entries_fog(sess):
-    """结构化逐拍日志：总记行动者；我方附输入文本，敌方意图不外泄。"""
+    """结构化逐拍日志：总记行动者；开放行动连敌方也可见，反应文本仍仅我方。"""
     pi = Intent(actor="player", 行动="拔剑冲门", 目标="scar")
     e = engine.log_action_entry(sess, pi, None, "player", "你拔剑冲向门口。")
     assert e["行动者"] == "player"
     assert e["扮演"] == "玩家"               # 判定「玩家」靠扮演，不靠 id
     assert e["行动文本"] == "拔剑冲门"       # 我方：附输入
 
-    ei = Intent(actor="scar", 行动="快刀直劈", 目标="player")
+    ei = Intent(actor="scar", 行动="快刀直劈", 目标="player")   # 开放（隐蔽=False）
     pr = Reaction(actor="player", 反应="侧身格挡")
     e2 = engine.log_action_entry(sess, ei, pr, "scar", "刀疤挥刀。")
     assert e2["行动者"] == "scar"
     assert e2["扮演"] == "agent"            # 敌方 NPC 扮演=agent
-    assert e2["行动文本"] is None           # 敌方：意图不外泄
-    assert e2["反应文本"] == "侧身格挡"      # 我方反应可见
+    assert e2["行动文本"] == "快刀直劈"      # 敌方**开放**行动现在直接可见
+    assert e2["反应文本"] == "侧身格挡"      # 我方反应可见（本轮反应轴不动）
 
     sys_e = engine.log_system_entry("【场景】酒馆")
     assert sys_e["行动者"] is None
 
 
+def test_log_action_entry_hidden_surface(sess):
+    """隐蔽行动的表象拆分（裁决后的正式条目）：
+    敌方蒙混→显表象、被识破→显真意暴露、漏填表象→None（绝不漏真意）；我方隐蔽→真意（知底）。"""
+    ei = Intent(actor="scar", 行动="使眼色给同伙递暗号", 目标=None, 隐蔽=True)
+
+    # 蒙混过关：显裁决生成的表象，不显真意
+    mix = engine.log_action_entry(sess, ei, None, "scar", "刀疤端起酒杯。",
+                                  表象="端起酒杯抿了一口", 识破=False)
+    assert mix["行动文本"] == "端起酒杯抿了一口"
+    assert "暗号" not in mix["行动文本"]
+
+    # 被识破：真意暴露
+    seen = engine.log_action_entry(sess, ei, None, "scar", "阿青看穿了。",
+                                   表象="", 识破=True)
+    assert seen["行动文本"] == "使眼色给同伙递暗号"
+
+    # LLM 漏填表象又没标识破：降级 None，绝不漏真意
+    sloppy = engine.log_action_entry(sess, ei, None, "scar", "……",
+                                     表象="", 识破=False)
+    assert sloppy["行动文本"] is None
+
+    # 我方隐蔽行动：玩家与其同阵营，看真意（知底）
+    ally_hidden = Intent(actor="aqing", 行动="悄悄给玩家使眼色", 目标=None, 隐蔽=True)
+    ah = engine.log_action_entry(sess, ally_hidden, None, "aqing", "阿青使了个眼色。",
+                                 表象="", 识破=False)
+    assert ah["行动文本"] == "悄悄给玩家使眼色"
+
+    # 中立阵营也按「非我方」遮蔽（回归防护：别把判据误改成 阵营=="敌"，否则中立漏成可见）
+    sess.角色卡["scar"].阵营 = "中立"
+    neu = engine.log_action_entry(sess, ei, None, "scar", "……", 表象="凑近搭话", 识破=False)
+    assert neu["行动文本"] == "凑近搭话" and "暗号" not in neu["行动文本"]
+
+
 def test_log_pending_entry_fog(sess):
-    """延迟遮盖的「进行中」预告帧：叙事未出(None)，且沿用同样的阵营可见性——敌方意图绝不提前泄露。"""
+    """延迟遮盖的「进行中」预告帧（叙事未出、已裁决=False）：
+    开放行动（含敌方）可提前显示；敌方**隐蔽**行动裁决前绝不预告。"""
     pi = Intent(actor="player", 行动="掀翻桌子撞他", 目标="scar")
     pe = engine.log_pending_entry(sess, "player", pi)
     assert pe["叙事"] is None and pe["行动文本"] == "掀翻桌子撞他"   # 我方意图可提前显示
 
-    ei = Intent(actor="scar", 行动="偷偷拔刀", 目标="player")
-    ee = engine.log_pending_entry(sess, "scar", ei)
-    assert ee["行动者"] == "scar" and ee["行动文本"] is None        # 敌方意图不提前泄露
+    open_foe = Intent(actor="scar", 行动="挥刀直劈", 目标="player")  # 开放敌方
+    of = engine.log_pending_entry(sess, "scar", open_foe)
+    assert of["行动文本"] == "挥刀直劈"                              # 开放敌方行动也提前显示
+
+    hidden_foe = Intent(actor="scar", 行动="偷偷拔刀", 目标="player", 隐蔽=True)
+    hf = engine.log_pending_entry(sess, "scar", hidden_foe)
+    assert hf["行动者"] == "scar" and hf["行动文本"] is None          # 敌方隐蔽意图不提前泄露
 
     r_ally = Reaction(actor="aqing", 反应="接住你抛来的刀")
     assert engine.log_pending_entry(sess, "player", pi, r_ally)["反应文本"] == "接住你抛来的刀"
     r_foe = Reaction(actor="scar", 反应="挥刀格开")
-    assert engine.log_pending_entry(sess, "player", pi, r_foe)["反应文本"] is None  # 敌方回应不泄露
+    assert engine.log_pending_entry(sess, "player", pi, r_foe)["反应文本"] is None  # 敌方回应不泄露（本轮）
 
 
 def test_perception_brief_skips_unknown_keys(sess):
@@ -261,3 +299,13 @@ def test_mates_brief_full_card_same_faction_only(sess):
     assert "刀疤" in brief and "怕火" in brief                  # 我方队友给整张卡(含弱点)
     engine.apply_delta(sess, Adjudication(阵营变更={"scar": "敌"}))
     assert "怕火" not in agents._mates_brief(sess, "player")    # 敌方资料不泄露
+
+
+def test_remove_skips_empty_key(sess):
+    """remove 里若混入空串，须跳过而非清空整列（"" in 内容 恒真的陷阱）；真关键字照常移除。"""
+    cl = sess.会变层.角色["scar"]
+    cl.身心状况 = [Condition(内容="右臂中刀"), Condition(内容="面色发白")]
+    engine.apply_delta(sess, Adjudication(ledger_delta=LedgerDelta(remove=["", "右臂中刀"])))
+    blobs = {c.内容 for c in cl.身心状况}
+    assert "右臂中刀" not in blobs        # 真关键字正常移除
+    assert "面色发白" in blobs            # 空串没把整列清掉

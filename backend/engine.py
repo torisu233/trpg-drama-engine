@@ -351,8 +351,10 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
                     cl.特殊情况.append(cond)
                 else:
                     cl.身心状况.append(cond)
-    # remove（以关键字匹配）
+    # remove（以关键字匹配；跳过空串——否则 "" in 内容 恒真会清空整列）
     for key in delta.remove:
+        if not key:
+            continue
         for cl in s.会变层.角色.values():
             cl.身心状况 = _remove_matching(cl.身心状况, key)
             cl.特殊情况 = _remove_matching(cl.特殊情况, key)
@@ -387,8 +389,32 @@ def log_system_entry(text: str) -> dict:
             "行动文本": None, "反应文本": None, "反应者名": None}
 
 
-def log_action_entry(s: Session, intent, reaction, actor: str, narration: str) -> dict:
-    """一拍的结构化记录：总记行动者；行动者/反应者属我方时附带其输入文本（敌方意图不泄露）。"""
+def visible_action_text(intent, ally: bool, 表象: str = "",
+                        识破: bool = False, 已裁决: bool = True) -> Optional[str]:
+    """玩家在「行动 chip」上看到的该角色明面动作（按隐蔽与否分流）。真值表：
+
+      开放(not 隐蔽)，任意阵营/任意时点      → 真意(intent.行动)   # 含敌方、含预告帧
+      隐蔽 + 行动者我方                      → 真意                # 玩家与其同阵营，知底
+      隐蔽 + 非我方 + 裁决前(预告帧)         → None                # 敌方隐蔽不预告
+      隐蔽 + 非我方 + 裁决后 + 被识破         → 真意                # 伪装被看穿，真相暴露
+      隐蔽 + 非我方 + 裁决后 + 未识破         → 表象 or None        # 蒙混过关显伪装；裁决漏填也绝不漏真意
+
+    注：本闸门「显什么」用表象/真意分流；而 is_contested 等**判定**始终用真意（intent.行动），二者有意分开。"""
+    if not getattr(intent, "隐蔽", False):
+        return intent.行动
+    if ally:
+        return intent.行动
+    if not 已裁决:
+        return None
+    if 识破:
+        return intent.行动
+    return 表象 or None
+
+
+def log_action_entry(s: Session, intent, reaction, actor: str, narration: str,
+                     表象: str = "", 识破: bool = False, 已裁决: bool = True) -> dict:
+    """一拍的结构化记录：总记行动者；行动文本按 visible_action_text 分流
+    （开放行动连敌方也可见；隐蔽敌方裁决前不显、裁决后显表象/被识破才显真意）。反应文本仍仅我方可见（本轮不动）。"""
     card = s.角色卡.get(actor)
     ally = bool(card and card.阵营 == "我方")
     e = {
@@ -397,7 +423,7 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str) -
         "行动者名": card.名 if card else actor,
         "阵营": card.阵营 if card else "",
         "扮演": card.扮演 if card else "",   # 「玩家」/「agent」——判定是不是玩家用（不靠 id）
-        "行动文本": intent.行动 if ally else None,
+        "行动文本": visible_action_text(intent, ally, 表象, 识破, 已裁决),
         "反应文本": None,
         "反应者名": None,
     }
@@ -410,10 +436,9 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str) -
 
 
 def log_pending_entry(s: Session, actor: str, intent, reaction=None) -> dict:
-    """进行中的拍（叙事未出）：与 log_action_entry 同样的阵营可见性，但 叙事=None。
-    用于延迟遮盖——LLM 每产出一件「玩家可见」的部分（我方行动/我方回应）就先推给前端显示。"""
-    e = log_action_entry(s, intent, reaction, actor, None)
-    return e
+    """进行中的拍（叙事未出，叙事=None）：与 log_action_entry 同闸门但 已裁决=False
+    ——故敌方隐蔽行动在裁决前恒不预告；开放行动（含敌方）与我方行动则照样提前显示。"""
+    return log_action_entry(s, intent, reaction, actor, None, 已裁决=False)
 
 
 # ───────────────── 分发叙事（GM 写、程序送） ─────────────────

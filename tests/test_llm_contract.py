@@ -167,6 +167,32 @@ def test_player_beat_survives_name_keyed_llm_output():
     assert last["行动文本"] == "拔剑直刺黑衣人咽喉"
 
 
+class HiddenFakeGrok(FakeGrok):
+    """敌方一拍**隐蔽**且蒙混过关：裁决返回 识破=False + 表象（伪装明面动作）。"""
+    async def call(self, prompt, schema, temperature=0.7, max_tokens=2000, model=""):
+        name = schema.__name__
+        if name == "Intent":
+            # 敌方暗算队友「阿大」（NPC），隐蔽——真意不该进玩家可见层
+            return Intent(行动="趁人不备摸向阿大背后下毒手", 目标="阿大", 隐蔽=True)
+        adj = await super().call(prompt, schema, temperature, max_tokens, model)
+        if name == "Adjudication":
+            adj.识破 = False
+            adj.表象 = "只是凑近与阿大搭话"
+        return adj
+
+
+def test_hidden_enemy_beat_shows_surface_not_true_intent():
+    """敌方隐蔽行动蒙混过关：裁决后的结构化日志 行动文本 = 表象（伪装），真意绝不泄露给玩家。"""
+    s = _hostile_session()
+    _run(flow.advance(HiddenFakeGrok(), s))   # 跑完敌方那一拍，停在玩家
+
+    foe_beats = [e for e in s.日志 if e.get("行动者") == "h3"]
+    assert foe_beats, "敌方隐蔽拍未记入结构化日志"
+    last = foe_beats[-1]
+    assert last["行动文本"] == "只是凑近与阿大搭话"      # 显表象
+    assert "下毒手" not in (last["行动文本"] or "")        # 真意绝不出现在玩家可见 chip
+
+
 def test_target_resolves_player_by_role_not_hardcoded_id():
     """敌方意图目标解析：以「扮演」认玩家、以名字解析角色，均不依赖写死 id。"""
     s = _hostile_session()
