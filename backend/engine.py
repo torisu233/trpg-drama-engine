@@ -38,14 +38,23 @@ def _tick(s: Session) -> None:
 
 def pick_actor(s: Session) -> str:
     """每次调用先 +1 拍；没人达门槛就继续加，直到有人达标。返回行动者 id。"""
+    actors = s.会变层.角色
+    if not actors:                            # 无人有初始局面 → 否则下面会死循环
+        raise ValueError("无可行动角色：会变层.角色为空（剧本缺初始局面）")
     _tick(s)  # 「场上每行动一次，大家加一次」
-    while not any(cl.行动值 >= config.ACTION_THRESHOLD for cl in s.会变层.角色.values()):
+    safety = 0
+    while not any(cl.行动值 >= config.ACTION_THRESHOLD for cl in actors.values()):
         _tick(s)
-    ready = [cid for cid, cl in s.会变层.角色.items()
+        safety += 1
+        if safety > 100000:                   # 兜底：全员速度<=0 等异常，绝不死循环
+            break
+    ready = [cid for cid, cl in actors.items()
              if cl.行动值 >= config.ACTION_THRESHOLD]
+    if not ready:                             # 没人达门槛（异常）→ 取行动值最高者兜底
+        ready = [max(actors, key=lambda c: actors[c].行动值)]
     if PLAYER in ready:                       # 平手：玩家优先
         return PLAYER
-    return max(ready, key=lambda c: s.会变层.角色[c].行动值)  # 否则行动值高者
+    return max(ready, key=lambda c: actors[c].行动值)  # 否则行动值高者
 
 
 def consume_turn(s: Session, actor: str) -> None:

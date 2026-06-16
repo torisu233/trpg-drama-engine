@@ -192,6 +192,26 @@ def test_distribute_private_by_name(sess):
     assert sess.记忆["scar"][-1] == "公开叙事"
 
 
+def test_session_normalizes_player_and_autofills_ledger():
+    """复现卡死剧本的形状：玩家 id 非 'player' + 会变层.角色 为空 → 仍可玩、不死循环。"""
+    from backend.models import Scenario, CharCard, Scene
+    from backend import scenario as scen
+    sc = Scenario(id="t", scene=Scene(id="s", 在场=["利拉特亚"]),
+                  角色卡={"利拉特亚": CharCard(名="0", 阵营="我方", 扮演="玩家")})
+    s = scen.session_from_scenario(sc)
+    assert "player" in s.角色卡 and "利拉特亚" not in s.角色卡   # 玩家 id 归一化
+    assert s.scene.在场 == ["player"]
+    assert "player" in s.会变层.角色                            # 自动补了初始局面
+    assert engine.pick_actor(s) == "player"                    # 不卡死且识别为玩家
+
+
+def test_pick_actor_empty_raises(sess):
+    """会变层.角色 为空时立即报错，而非无限循环卡死。"""
+    sess.会变层.角色 = {}
+    with pytest.raises(ValueError):
+        engine.pick_actor(sess)
+
+
 def test_beats_to_act():
     """程序算好「还差几拍到门槛」：负初始行动值→很多拍后(模拟缓慢逼近)。"""
     from backend.models import CharLedger
