@@ -102,7 +102,7 @@ def session_from_scenario(sc: Scenario) -> Session:
             spd = config.SPEED_PLAYER if 角色卡[cid].扮演 == "玩家" else config.SPEED_NORMAL
             会变层.角色[cid] = CharLedger(行动速度=spd)
 
-    记忆 = {cid: [] for cid in scene.在场}
+    记忆 = {cid: [] for cid in scene.在场 if cid in 角色卡}
     公开日志, 日志 = [], []
     if scene.地点:
         line = f"【场景】{scene.地点}"
@@ -110,7 +110,7 @@ def session_from_scenario(sc: Scenario) -> Session:
     if scene.钩子:
         line = f"【开场】{scene.钩子}"
         公开日志.append(line); 日志.append(engine.log_system_entry(line))
-    return Session(
+    s = Session(
         scene=scene,
         世界观=sc.世界观.model_copy(deep=True),
         角色卡=角色卡,
@@ -119,3 +119,5 @@ def session_from_scenario(sc: Scenario) -> Session:
         公开日志=公开日志,
         日志=日志,
     )
+    engine.prune_orphans(s)   # 在场/会变层里引用了不存在角色卡的孤儿 id → 剔除，保证下游 s.角色卡[cid] 安全
+    return s

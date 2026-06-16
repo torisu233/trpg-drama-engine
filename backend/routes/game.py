@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
-from .. import game_store, flow
+from .. import game_store, flow, engine
+from .. import scenario as scen
 from ..deps import get_grok
 from ..db import get_db, SessionLocal
 from ..auth import current_user
@@ -42,7 +43,11 @@ async def new_game(payload: dict, user: User = Depends(current_user), db: Sessio
     if not (user.is_admin or row.visibility == "published" or row.author_id == user.id):
         raise HTTPException(403, "无权用该剧本开局")
     sc = Scenario(**row.content)
-    gid, s = game_store.create_game(db, sc, user.id, row.id)
+    s = scen.session_from_scenario(sc)
+    reason = engine.validate_playable(s)     # 不完整剧本（无玩家/玩家不在场/无在场角色）→ 清晰 400，不崩不挂
+    if reason:
+        raise HTTPException(400, f"剧本不完整，无法开局：{reason}")
+    gid = game_store.create_game(db, s, user.id, row.id)
     await flow.advance(get_grok(), s)
     game_store.save_game(db, gid, s)
     return game_store.snapshot(gid, s)

@@ -228,6 +228,23 @@ def test_new_game_private_scenario_forbidden(client, make_user):
     assert client.post("/api/game/new", json={"scenario_id": sid}, headers=b).status_code == 403
 
 
+@pytest.mark.parametrize("content, why", [
+    ({"id": "无玩家", "scene": {"id": "s", "地点": "x", "在场": ["e1"]},
+      "角色卡": {"e1": {"名": "匪", "阵营": "敌", "扮演": "agent"}}}, "无玩家"),
+    ({"id": "玩家不在场", "scene": {"id": "s", "地点": "x", "在场": ["e1"]},
+      "角色卡": {"p1": {"名": "侠", "阵营": "我方", "扮演": "玩家"},
+                "e1": {"名": "匪", "阵营": "敌", "扮演": "agent"}}}, "玩家不在场"),
+    ({"id": "空在场", "scene": {"id": "s", "地点": "x", "在场": []}, "角色卡": {}}, "空在场"),
+], ids=["无玩家", "玩家不在场", "空在场"])
+def test_new_game_incomplete_scenario_rejected(client, user_headers, content, why):
+    """不完整剧本能保存，但开局被闸门挡成清晰 400（而非 500 或无限 LLM 循环挂起）。"""
+    sid = client.post("/api/scenarios",
+                      json={"scenario": content, "visibility": "private"},
+                      headers=user_headers).json()["id"]
+    r = client.post("/api/game/new", json={"scenario_id": sid}, headers=user_headers)
+    assert r.status_code == 400 and "剧本不完整" in r.json()["detail"]
+
+
 def test_game_ownership_hidden_from_others(client, tavern_scenario, make_user):
     """游戏永远私人：别人取/删别人的游戏 → 404（不泄露存在性）。"""
     sid, a = tavern_scenario

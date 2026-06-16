@@ -38,6 +38,32 @@ def player_id(s: Session) -> str:
     return PLAYER
 
 
+def prune_orphans(s: Session) -> None:
+    """剔除「在场 / 会变层」里引用了不存在角色卡的孤儿 id（就地修改）。
+
+    保证不变量「在场 ⊆ 角色卡」「会变层.角色键 ⊆ 角色卡」，杜绝下游各处裸 `s.角色卡[cid]`
+    （ground_truth / build_view / flow 维护…）因不一致剧本而 KeyError。开局与读档两个入口都调。"""
+    s.scene.在场 = [cid for cid in s.scene.在场 if cid in s.角色卡]
+    s.会变层.角色 = {cid: cl for cid, cl in s.会变层.角色.items() if cid in s.角色卡}
+
+
+def validate_playable(s: Session) -> Optional[str]:
+    """开局前的可玩性校验：返回「不可玩的原因」字符串，可玩则 None。
+
+    把两类会让 new_game 崩/挂的不完整剧本，挡成清晰的拒绝（而非 500 或无限循环）：
+      ① 无任何有行动条的角色 → pick_actor 无人可动（原会 ValueError→500）。
+      ② 无「扮演==玩家」或玩家不在场 → advance 永远轮不到玩家、停不下来（原会无限 LLM 循环）。
+    """
+    if not s.会变层.角色:
+        return "没有任何在场角色（请在场景「在场」里至少放一个角色）"
+    players = [cid for cid, c in s.角色卡.items() if c.扮演 == "玩家"]
+    if not players:
+        return "缺少玩家角色（需把某个角色的「扮演」设为「玩家」）"
+    if not any(pid in s.会变层.角色 for pid in players):
+        return "玩家角色不在场（请把玩家角色加入场景「在场」）"
+    return None
+
+
 # ───────────────── 行动条 ─────────────────
 def _tick(s: Session) -> None:
     for cl in s.会变层.角色.values():
@@ -260,7 +286,9 @@ def ground_truth(s: Session) -> str:
         g = f"（{c.gates}）" if c.gates else ""
         lines.append(f"- {c.内容}{g}{tag}")
     for cid, cl in s.会变层.角色.items():
-        card = s.角色卡[cid]
+        card = s.角色卡.get(cid)
+        if card is None:                      # 防御：孤儿会变层条目（prune_orphans 已清，双保险，护住裁决主路径）
+            continue
         g = f"/{card.性别}" if card.性别 else ""
         lines.append(f"◆ {card.名}（{card.阵营}{g}）速度{cl.行动速度} 感知:{cl.感知能力}")
         if card.能力:

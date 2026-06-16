@@ -17,14 +17,16 @@ def _dump(s: Session) -> dict:
     return s.model_dump(mode="json")
 
 
-def create_game(db, sc, user_id: int, scenario_id=None):
-    """从一份 Pydantic Scenario 开一局，写入 DB，绑 user_id。返回 (gid, Session)。"""
-    s = scen.session_from_scenario(sc)
+def create_game(db, s: Session, user_id: int, scenario_id=None) -> str:
+    """把一份（已建好、已校验可玩的）Session 写入 DB，绑 user_id。返回 gid。
+
+    刻意收一份现成 Session（而非 Scenario）：让路由能在持久化**之前**先 validate_playable，
+    不完整剧本直接 400、不留孤儿 Game 行。"""
     gid = _new_id()
     db.add(Game(id=gid, user_id=user_id, scenario_id=scenario_id,
                 state=_dump(s), turn_count=s.回合数, ended=s.结束))
     db.commit()
-    return gid, s
+    return gid
 
 
 def load_game(db, gid: str):
@@ -33,7 +35,10 @@ def load_game(db, gid: str):
 
 
 def session_of(row: Game) -> Session:
-    return Session(**row.state)
+    from . import engine
+    s = Session(**row.state)
+    engine.prune_orphans(s)   # 读档侧也守一道：已存的不一致状态不致在后续回合让裁决/视图 KeyError
+    return s
 
 
 def save_game(db, gid: str, s: Session) -> None:
