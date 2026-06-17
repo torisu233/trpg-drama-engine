@@ -71,6 +71,7 @@ export const api = {
   delGame: (gid) => j('/api/game/' + gid, { method: 'DELETE' }),
   actionStream: (gid, action, onSnap) => postStream('/api/game/' + gid + '/action', { action }, onSnap),
   reactStream: (gid, reaction, onSnap) => postStream('/api/game/' + gid + '/react', { reaction }, onSnap),
+  suggest: (gid) => j('/api/game/' + gid + '/suggest'),   // AI 替玩家出参考行为（只读）
   // 反馈：用户端（自己那条线）
   feedbackMine: () => j('/api/feedback'),
   feedbackSend: (body) => post('/api/feedback', { body }),

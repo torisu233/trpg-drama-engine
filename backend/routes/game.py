@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
-from .. import game_store, flow, engine
+from .. import game_store, flow, engine, agents
 from .. import scenario as scen
 from ..deps import get_grok
 from ..db import get_db, SessionLocal
@@ -94,3 +94,24 @@ async def react(gid: str, payload: dict, user: User = Depends(current_user), db:
     if s.结束:
         return JSONResponse(game_store.snapshot(gid, s))
     return _stream(gid, s, flow.stream_reaction(get_grok(), s, payload.get("reaction", {})))
+
+
+@router.get("/game/{gid}/suggest")
+async def suggest(gid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """AI 替玩家出一个「参考行为」（如同 agent 角色那样），供玩家参考——玩家仍手动行动。
+    只读：不推进、不落账、不存档；仅在玩家决策点(pending=player_action/reaction)有效，否则建议=None。
+    复用 character_intent/reaction（玩家卡 扮演==玩家 同有完整演戏字段）；基于玩家视野(雾)不漏 gm 秘密。"""
+    _, s = _owned_session(db, gid, user)
+    p = s.pending or {}
+    if s.结束 or p.get("type") not in ("player_action", "player_reaction"):
+        return {"建议": None}
+    grok = get_grok()
+    pid = engine.player_id(s)
+    if p.get("type") == "player_action":
+        intent = await agents.character_intent(grok, s, pid)
+        tid = engine.resolve_id(s, intent.目标)        # 名/id/None → id，给前端 select 用
+        return {"建议": {"类型": "action", "行动": intent.行动,
+                        "目标id": tid, "目标名": (s.角色卡[tid].名 if tid else None),
+                        "隐蔽": intent.隐蔽}}
+    reaction = await agents.character_reaction(grok, s, pid, p.get("incoming", ""))
+    return {"建议": {"类型": "reaction", "反应": reaction.反应}}

@@ -102,6 +102,13 @@
             </select>
           </div>
         </div>
+        <div class="suggest-box" v-if="g.suggesting || (g.suggestion && g.suggestion.类型 === 'action')">
+          <span class="muted small" v-if="g.suggesting">🤖 AI 思考中…</span>
+          <template v-else>
+            <div class="small"><b>🤖 AI 推荐（参考）</b> <a class="adopt" @click="adoptAction">采用</a></div>
+            <div class="small">{{ g.suggestion.行动 }}<span class="muted" v-if="g.suggestion.目标名"> → {{ g.suggestion.目标名 }}</span></div>
+          </template>
+        </div>
         <button style="margin-top:8px" @click="doAction" :disabled="g.busy">行动</button>
       </div>
 
@@ -112,6 +119,13 @@
           <label>你要如何回应（闪避/格挡/反击/还嘴/喝止…，一句话含做法）</label>
           <textarea v-model="reaction" rows="2"
             placeholder="例：翻身滚到桌下 / 抬臂格开并反手一刀 / 冷笑回敬，趁他挪动欺身上前"></textarea>
+          <div class="suggest-box" v-if="g.suggesting || (g.suggestion && g.suggestion.类型 === 'reaction')">
+            <span class="muted small" v-if="g.suggesting">🤖 AI 思考中…</span>
+            <template v-else>
+              <div class="small"><b>🤖 AI 推荐（参考）</b> <a class="adopt" @click="adoptReaction">采用</a></div>
+              <div class="small">{{ g.suggestion.反应 }}</div>
+            </template>
+          </div>
           <button style="margin-top:8px" @click="doReact" :disabled="g.busy">回应</button>
         </div>
       </div>
@@ -125,7 +139,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 
@@ -170,6 +184,28 @@ onMounted(async () => {
   if (!g.snap || g.snap.game_id !== gid) await g.load(gid)
 })
 
+// 到玩家决策点就拉「AI 替你演」的参考建议（页面先到、建议异步补）。串流中(busy)不触发、不每拍抖动。
+watch(
+  () => (snap.value && !g.busy) ? (pendingType.value + '#' + snap.value.回合数) : 'idle',
+  () => {
+    if (!g.busy && (pendingType.value === 'player_action' || pendingType.value === 'player_reaction')) {
+      g.fetchSuggestion()
+    } else {
+      g.suggestion = null
+    }
+  },
+  { immediate: true }
+)
+
+function adoptAction() {
+  const s = g.suggestion
+  if (!s) return
+  act.value = { 行动: s.行动 || '', 目标: s.目标id || '', 隐蔽: !!s.隐蔽 }
+}
+function adoptReaction() {
+  if (g.suggestion) reaction.value = g.suggestion.反应 || ''
+}
+
 async function doAction() {
   const a = { 行动: act.value.行动.trim() || '按兵不动', 目标: act.value.目标 || null, 隐蔽: act.value.隐蔽 }
   act.value = { 行动: '', 目标: '', 隐蔽: false }
@@ -182,3 +218,14 @@ async function doReact() {
   try { await g.react(r) } catch (e) { alert('回应出错：' + e.message) }
 }
 </script>
+
+<style scoped>
+.suggest-box {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  background: #15130f;
+}
+.suggest-box .adopt { cursor: pointer; color: var(--gold); text-decoration: underline; margin-left: 6px; }
+</style>

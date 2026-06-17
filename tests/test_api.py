@@ -271,6 +271,66 @@ def test_game_admin_sees_owner(client, tavern_scenario, admin_headers):
         client.delete(f"/api/game/{gid}", headers=a)
 
 
+# ───────────────── AI 推荐玩家行为（只读端点）─────────────────
+class _FakeGrok:
+    """离线假 grok：character_intent/reaction 会调它，返回固定 Intent/Reaction。"""
+    async def call(self, prompt, schema, **kw):
+        if schema.__name__ == "Intent":
+            return schema(行动="缓缓起身按住短刃，盯着刀疤", 目标="刀疤")   # 目标用名，端点应 resolve 成 id
+        if schema.__name__ == "Reaction":
+            return schema(反应="侧身避开，反手扣腕")
+        return schema()
+    async def close(self):
+        pass
+
+
+def test_suggest_action(client, tavern_scenario, monkeypatch):
+    """玩家行动点：suggest 返回 action 建议；目标名被 resolve 成 id；只读不改局面。"""
+    monkeypatch.setattr("backend.routes.game.get_grok", lambda: _FakeGrok())
+    sid, headers = tavern_scenario
+    gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=headers).json()["game_id"]
+    try:
+        before = client.get(f"/api/game/{gid}", headers=headers).json()
+        r = client.get(f"/api/game/{gid}/suggest", headers=headers)
+        assert r.status_code == 200
+        sug = r.json()["建议"]
+        assert sug["类型"] == "action"
+        assert "短刃" in sug["行动"]
+        assert sug["目标id"] == "scar" and sug["目标名"] == "刀疤"   # 名→id
+        # 只读：回合数/pending 不变
+        after = client.get(f"/api/game/{gid}", headers=headers).json()
+        assert after["回合数"] == before["回合数"] and after["pending"] == before["pending"]
+    finally:
+        client.delete(f"/api/game/{gid}", headers=headers)
+
+
+def test_suggest_null_when_not_player_turn(client, tavern_scenario, db):
+    """非玩家决策点(pending=None)→ 建议为 None，且无需调 grok（提前返回）。"""
+    from backend import game_store
+    sid, headers = tavern_scenario
+    gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=headers).json()["game_id"]
+    try:
+        row = game_store.load_game(db, gid)
+        s = game_store.session_of(row)
+        s.pending = None
+        game_store.save_game(db, gid, s)
+        r = client.get(f"/api/game/{gid}/suggest", headers=headers).json()
+        assert r["建议"] is None
+    finally:
+        client.delete(f"/api/game/{gid}", headers=headers)
+
+
+def test_suggest_requires_ownership(client, tavern_scenario, make_user):
+    """别人的游戏 → 404（不泄露存在性）。"""
+    sid, owner = tavern_scenario
+    gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=owner).json()["game_id"]
+    _, other = make_user("mallory")
+    try:
+        assert client.get(f"/api/game/{gid}/suggest", headers=other).status_code == 404
+    finally:
+        client.delete(f"/api/game/{gid}", headers=owner)
+
+
 # ───────────────── 反馈聊天 ─────────────────
 def test_feedback_flow(client, make_user, admin_headers):
     """用户发反馈 → admin 在列表看到(未读) → 打开标已读 → 回复 → 用户看到回复。"""
