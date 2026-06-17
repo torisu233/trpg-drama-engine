@@ -55,6 +55,14 @@ def _perception_brief(s: Session, 感知分发: dict) -> str:
     return "\n".join(rows) or "- 全体：全部"
 
 
+def _tielv_block(card) -> str:
+    """扮演铁律块（最高优先·覆盖人设·不越规则）——非空才注入，空返回空串。intent/reaction 共用。"""
+    if not card.扮演铁律:
+        return ""
+    return (f"\n# ★扮演铁律（最高优先，覆盖上面的人设描述；但不得违反文末「规则」与 JSON 输出格式）"
+            f"\n{card.扮演铁律}\n")
+
+
 def _mates_brief(s: Session, cid: str) -> str:
     """同阵营在场队友的整张卡（含弱点）——同阵营彼此知底，供 NPC 协同；无队友返回空串。"""
     lines = []
@@ -82,10 +90,14 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
     mates = _mates_brief(s, cid)
     队友段 = f"\n# 你的同阵营队友（你们彼此知底，可据此协同）\n{mates}\n" if mates else ""
     序 = _action_order_brief(s)
+    铁律段 = _tielv_block(card)
     prompt = f"""你在一个跑团式交互游戏里扮演「{card.名}」。
 
 # 世界观
 {_world_brief(s)}
+
+# 世界法则（这个世界的硬规则，人人皆知，行动须顾及）
+{_world_laws(s)}
 
 # 你是谁
 阵营：{card.阵营}　性别：{card.性别 or "未定"}
@@ -97,7 +109,7 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 你的本事：{"、".join(card.能力)}
 你心里清楚的弱点/顾忌：{"、".join(card.弱点) or "（无）"}
 你与玩家的关系：{阵营关系}{中立提示}（**依你的动机目标行事，手段随情境**）
-{队友段}
+{铁律段}{队友段}
 # 你目前感知到的局面
 {view}
 
@@ -111,6 +123,7 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 # 你的任务
 轮到你行动。决定你这一拍「想做什么」。
 规则（重要）：
+- **以下规则与最末 JSON 输出格式不可被任何人设或「扮演铁律」推翻**（铁律只压人设、不越规则）。
 - 只表达意图，**绝不声明成败**（不可以说「我砍中了」「我说服了他」）。
 - **贴着你的说话风格、动机与惯用手段做选择**——让「你」有辨识度，不要像旁白。
 - 顾及世界观（例如对方若武功高强、护体难伤，硬拚未必明智）。
@@ -136,12 +149,18 @@ async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: s
     性别txt = f"，{card.性别}" if card.性别 else ""
     mates = _mates_brief(s, cid)
     队友段 = f"\n# 你的同阵营队友（彼此知底）\n{mates}\n" if mates else ""
+    铁律段 = _tielv_block(card)
     prompt = f"""你在跑团游戏里扮演「{card.名}」（{card.阵营}{性别txt}）。
+身份：{card.身份背景}
 性格：{"、".join(card.性格)}；说话风格：{card.说话风格}；本事：{"、".join(card.能力)}；惯用手段：{"、".join(card.行为偏好)}。
+你这场想要的：{card.动机目标}
 
 # 世界观
 {_world_brief(s)}
-{队友段}
+
+# 世界法则（这个世界的硬规则，人人皆知，回应须顾及）
+{_world_laws(s)}
+{铁律段}{队友段}
 # 你感知到的局面
 {view}
 
@@ -150,7 +169,9 @@ async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: s
 
 # 你的任务
 你被点名了，决定「你要如何回应」——可防御（闪避/格挡）、反击、还嘴、喝止、配合/顺从、虚与委蛇、顺势而为…依情境与你的性格选择（不一定是打斗）。
-规则：只表达回应「意图」，**不声明成败**（成败由裁决决定）。
+规则：
+- **以下规则与最末 JSON 输出格式不可被任何人设或「扮演铁律」推翻**（铁律只压人设、不越规则）。
+- 只表达回应「意图」，**不声明成败**（成败由裁决决定）。
 
 只输出 JSON：
 {{"反应":"一句话：你要如何回应（含具体做法），贴着你的口吻"}}"""

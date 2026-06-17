@@ -52,6 +52,7 @@ def _merge_fields(existing, new, fields) -> None:
             setattr(existing, f, nv)
 
 
+# 故意不含「扮演铁律」——它是用户手填的最高优先级铁律，AI 编剧不得碰（既有角色合并时保留、不被清）
 _CARD_FIELDS = ["名", "阵营", "扮演", "性别", "身份背景", "性格", "说话风格",
                 "动机目标", "行为偏好", "能力", "防御特性", "弱点"]
 

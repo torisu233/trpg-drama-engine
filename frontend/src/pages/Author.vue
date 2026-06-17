@@ -26,7 +26,8 @@
           <summary>世界观</summary>
           <div class="field"><label>基调</label><input v-model="d.世界观.基调" placeholder="如：武侠，江湖恩怨" /></div>
           <div class="field"><label>背景（约 200 字）</label><textarea v-model="d.世界观.背景" rows="3"></textarea></div>
-          <div class="field"><label>法则（影响裁决）</label>
+          <div class="field"><label>法则（影响裁决·人人皆知）</label>
+            <div class="hint muted small">法则=这个世界的公共规则，裁决与所有角色都看得到；勿写任何一方的秘密。秘密请用角色「弱点」或会变层里 gm 可见性的场景事实。</div>
             <StrListEditor v-model="d.世界观.法则" ph="一条世界法则" label="添加法则" />
           </div>
         </details>
@@ -63,6 +64,9 @@
               </div>
             </div>
             <label>身份背景（含外貌年龄）</label><textarea v-model="c.身份背景" rows="2"></textarea>
+            <label>扮演铁律（保底·最高优先，只喂角色 AI）</label>
+            <textarea v-model="c.扮演铁律" rows="2"
+              placeholder="只填 1–3 条必须不折不扣遵守的核心铁律（如「绝不背叛玩家」「坚信自己是真命天子」）；日常性格/口吻请用下面的结构化字段，堆太多角色会变木。仅压人设、不越游戏规则。"></textarea>
             <label>说话风格</label><input v-model="c.说话风格" />
             <label>动机目标</label><input v-model="c.动机目标" />
             <label>性格</label><StrListEditor v-model="c.性格" label="加" />
@@ -179,7 +183,7 @@ function addChar() {
   const id = newCharId.value.trim()
   if (!id || id in d.value.角色卡) return
   d.value.角色卡[id] = {
-    名: '', 阵营: '我方', 扮演: 'agent', 性别: '', 身份背景: '', 性格: [],
+    名: '', 阵营: '我方', 扮演: 'agent', 性别: '', 身份背景: '', 扮演铁律: '', 性格: [],
     说话风格: '', 动机目标: '', 行为偏好: [], 能力: [], 防御特性: [], 弱点: [],
   }
   if (!d.value.scene.在场.includes(id)) d.value.scene.在场.push(id)

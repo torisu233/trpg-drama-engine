@@ -47,6 +47,15 @@ def test_author_merge_keeps_existing():
     assert "scar" in sc.会变层.角色 and "player" in sc.会变层.角色
 
 
+def test_author_merge_preserves_tielv():
+    """编剧编辑既有角色时，用户手填的『扮演铁律』不被清（不在 _CARD_FIELDS、走保留）。"""
+    sc = Scenario(id="t", 角色卡={"scar": CharCard(名="刀疤", 阵营="敌", 扮演铁律="绝不投降")})
+    scen.apply_author_reply(sc, AuthorReply(reply="", 区块="char", char_id="scar",
+        char=CharCard(名="刀疤", 阵营="敌", 性格=["狡猾"])))   # AI 没填铁律（默认空）
+    assert sc.角色卡["scar"].扮演铁律 == "绝不投降"   # 铁律保留、未被清
+    assert sc.角色卡["scar"].性格 == ["狡猾"]        # 正常字段照常合并
+
+
 # ───────────────── 不完整剧本：退化（剔孤儿）+ 开局闸门 ─────────────────
 def test_session_from_scenario_prunes_orphans():
     """在场/会变层引用了不存在的角色卡（孤儿）→ 开局时剔除，ground_truth 不再 KeyError。"""
