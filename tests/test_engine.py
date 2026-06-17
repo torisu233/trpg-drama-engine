@@ -153,6 +153,18 @@ def test_log_action_entry_hidden_surface(sess):
     assert neu["行动文本"] == "凑近搭话" and "暗号" not in neu["行动文本"]
 
 
+def test_log_action_entry_advance_flag(sess):
+    """时间跳跃：推进非空 → 日志带描述供前端画分隔线；普通拍 → None。"""
+    pi = Intent(actor="player", 行动="我很快买好回来了", 目标=None)
+    jumped = engine.log_action_entry(sess, pi, None, "player", "半个时辰后，你拎着东西回来。",
+                                     推进="半个时辰后你买好回来了")
+    assert jumped["推进"] == "半个时辰后你买好回来了"
+    normal = engine.log_action_entry(sess, pi, None, "player", "你站着没动。")
+    assert normal["推进"] is None        # 默认空 → None，不画分隔线
+    # 预告帧（log_pending_entry 走同闸门）也不带推进
+    assert engine.log_pending_entry(sess, "player", pi)["推进"] is None
+
+
 def test_log_pending_entry_fog(sess):
     """延迟遮盖的「进行中」预告帧（叙事未出、已裁决=False）：
     开放行动（含敌方）可提前显示；敌方**隐蔽**行动裁决前绝不预告。"""

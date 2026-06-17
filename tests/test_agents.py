@@ -5,6 +5,7 @@
 """
 import asyncio
 from backend import agents
+from backend.models import Intent, Adjudication
 from backend.scene import new_tavern_session
 
 
@@ -19,6 +20,8 @@ class CapturingGrok:
             return schema(行动="按兵不动")
         if schema.__name__ == "Reaction":
             return schema(反应="硬抗")
+        if schema.__name__ == "Narration":
+            return schema(公开="（占位叙事）")
         return schema()
 
     async def close(self):
@@ -34,6 +37,21 @@ def _intent_prompt(s, cid):
 def _reaction_prompt(s, cid, incoming="玩家拔剑刺来"):
     cap = CapturingGrok()
     asyncio.run(agents.character_reaction(cap, s, cid, incoming))
+    return cap.last_prompt
+
+
+def _adjudicate_prompt(s, intent=None):
+    cap = CapturingGrok()
+    intent = intent or Intent(actor="scar", 行动="按兵不动")
+    asyncio.run(agents.adjudicate(cap, s, intent, None, None))
+    return cap.last_prompt
+
+
+def _narrate_prompt(s, adj=None, intent=None):
+    cap = CapturingGrok()
+    adj = adj or Adjudication()
+    intent = intent or Intent(actor="scar", 行动="按兵不动")
+    asyncio.run(agents.narrate(cap, s, adj, intent, None))
     return cap.last_prompt
 
 
@@ -78,3 +96,41 @@ def test_reaction_prompt_adds_laws_motive_identity_and_tielv():
     assert scar.动机目标 in p                         # 动机补齐
     assert scar.身份背景 in p                         # 身份补齐
     assert "# ★扮演铁律" in p and "你只说三字短句" in p  # 铁律注入
+
+
+# ───────────────── 非刻板/推进：意图侧场景边界 + 反重复升格 + 具体新举动 ─────────────────
+def test_intent_prompt_has_scene_bound_and_anti_repeat():
+    """意图 prompt：场景边界意识 + 压缩离场 + 反重复升格 + 主动具体新举动。"""
+    p = _intent_prompt(new_tavern_session(), "scar")
+    assert "单一、有界的场景" in p                       # 场景边界意识
+    assert "压缩带过" in p and "很快买好回来" in p        # 压缩离场（一句带过、不真离场）
+    assert "必须有实质不同" in p                          # 反重复升格
+    assert "具体、当场可见的新举动" in p                  # 闲场主动做具体新举动
+
+
+# ───────────────── 推进：裁决菜单拓宽 + 时间跳跃输出 ─────────────────
+def test_adjudicate_prompt_has_nonfight_levers_and_advance_field():
+    """裁决 prompt：反僵持菜单含非战斗推进 + 压缩离场/时间跳跃 + 输出含「推进」字段。"""
+    p = _adjudicate_prompt(new_tavern_session())
+    assert "战斗与非战斗并列" in p                        # 菜单混写、不硬分支
+    assert "具体可见的转变" in p                          # 非战斗推进手段
+    assert "压缩离场" in p and "时间跳跃" in p             # 压缩离场/跳过死时间
+    assert '"推进"' in p                                  # 输出 JSON 含推进键
+
+
+# ───────────────── 推进 + 反复读：叙事侧 ─────────────────
+def test_narrate_prompt_anchor_downgrade_and_no_recycle():
+    """叙事 prompt：锚点降权（不必每拍复述）+ 反复读环境/招牌。"""
+    p = _narrate_prompt(new_tavern_session())
+    assert "不必每拍复述" in p                            # 锚点从「必念」降权为「参考」
+    assert "别复读环境与招牌" in p                        # 反复读氛围/招牌神态
+    assert "绝不可逐字或整段照搬" in p                    # 防回声：低新颖度拍也别照抄上文
+
+
+def test_narrate_prompt_injects_timeskip_when_set():
+    """裁决填了推进 → 叙事 prompt 含时间跳跃块 + 压缩描述原文；未填则无。"""
+    s = new_tavern_session()
+    with_jump = _narrate_prompt(s, Adjudication(推进="半个时辰后克洛伊拎着冰淇淋回来了"))
+    assert "时间跳跃" in with_jump and "半个时辰后克洛伊拎着冰淇淋回来了" in with_jump
+    no_jump = _narrate_prompt(s, Adjudication())           # 推进默认空
+    assert "⏭ 时间跳跃" not in no_jump                     # 空 → 不注入跳跃块

@@ -72,7 +72,7 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, l
     narr = await agents.narrate(grok, s, adj, intent, reaction)
     engine.distribute(s, narr.公开, narr.私密)
     s.日志.append(engine.log_action_entry(s, intent, reaction, actor, narr.公开,
-                                          表象=adj.表象, 识破=adj.识破))
+                                          表象=adj.表象, 识破=adj.识破, 推进=adj.推进))
     engine.consume_turn(s, actor)
     s.回合数 += 1
     engine.expire_transients(s)

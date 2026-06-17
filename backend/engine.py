@@ -412,9 +412,11 @@ def visible_action_text(intent, ally: bool, 表象: str = "",
 
 
 def log_action_entry(s: Session, intent, reaction, actor: str, narration: str,
-                     表象: str = "", 识破: bool = False, 已裁决: bool = True) -> dict:
+                     表象: str = "", 识破: bool = False, 已裁决: bool = True,
+                     推进: str = "") -> dict:
     """一拍的结构化记录：总记行动者；行动文本按 visible_action_text 分流
-    （开放行动连敌方也可见；隐蔽敌方裁决前不显、裁决后显表象/被识破才显真意）。反应文本仍仅我方可见（本轮不动）。"""
+    （开放行动连敌方也可见；隐蔽敌方裁决前不显、裁决后显表象/被识破才显真意）。反应文本仍仅我方可见（本轮不动）。
+    推进非空＝本拍含时间跳跃，供前端画「时间流逝」分隔线。"""
     card = s.角色卡.get(actor)
     ally = bool(card and card.阵营 == "我方")
     e = {
@@ -426,6 +428,7 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str,
         "行动文本": visible_action_text(intent, ally, 表象, 识破, 已裁决),
         "反应文本": None,
         "反应者名": None,
+        "推进": 推进 or None,             # 时间跳跃描述（非空才显分隔线）；预告帧/普通拍为 None
     }
     if reaction is not None:
         rc = s.角色卡.get(reaction.actor)
