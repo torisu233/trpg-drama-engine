@@ -86,10 +86,9 @@ def pick_actor(s: Session) -> str:
              if cl.行动值 >= config.ACTION_THRESHOLD]
     if not ready:                             # 没人达门槛（异常）→ 取行动值最高者兜底
         ready = [max(actors, key=lambda c: actors[c].行动值)]
-    pid = player_id(s)
-    if pid in ready:                          # 平手：玩家优先
-        return pid
-    return max(ready, key=lambda c: actors[c].行动值)  # 否则行动值高者
+    # 纯按行动值排序：高者先动；相同则不额外排序，取在场/字典的自然顺序
+    # （max 在并列时返回首个最大值，故等同自然顺序——不再让玩家无条件优先）
+    return max(ready, key=lambda c: actors[c].行动值)
 
 
 def consume_turn(s: Session, actor: str) -> None:

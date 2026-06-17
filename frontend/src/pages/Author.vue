@@ -9,7 +9,7 @@
           <option value="published">发布</option>
         </select>
         <button @click="save" :disabled="s.busy">保存</button>
-        <router-link to="/" style="align-self:center">← 返回</router-link>
+        <router-link to="/" class="back-btn">← 返回</router-link>
       </div>
     </div>
 
@@ -229,3 +229,21 @@ async function save() {
   } catch (e) { alert('保存失败：' + e.message) }
 }
 </script>
+
+<style scoped>
+/* 「返回」描边按钮：与「保存」（实心 button）等高同风，用项目设计变量 --line/--gold */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 13px;                 /* = button 的 8px14px 减去 1px 边框 → 等高 */
+  font-size: 14px;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.back-btn:hover { color: var(--gold); border-color: var(--gold); }
+</style>
