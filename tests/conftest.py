@@ -87,8 +87,7 @@ def db(_db_ready):
 def client():
     """FastAPI 测试客户端：in-process 直接打路由，不需真的起服务器，也不打 Grok。
 
-    刻意不进入 lifespan（不 `with`）→ 不触发 seed_admin/seed_demo_scenario，
-    测试完全掌控自己的数据。
+    刻意不进入 lifespan（不 `with`）→ 不触发 seed_admin，测试完全掌控自己的数据。
     """
     return TestClient(app)
 

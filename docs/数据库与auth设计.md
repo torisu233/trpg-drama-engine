@@ -4,7 +4,7 @@
 
 ## 总原则
 - **DB 是唯一真相**：除 **admin 账号、API key（来自环境变量）** 外，所有数据都在 DB。
-- `scenarios/武侠001.json` 仅作**首次 seed** 导入 DB；之后剧本只存 DB（或导出到本地备份夹，后续功能）。
+- **剧本只存 DB**，由用户经编剧页/接口创建；DB 初始化**不再 seed 任何示范剧本**。`scenarios/*.json` 只是开发者参考样例（运行时不读）。
 - **软删除**：不物理删行，用 `is_active` 字段标记启用/停用；查询默认 `is_active=true`。
 - **本地、测试、云端皆 PostgreSQL**（dev/prod 行为一致，不用 SQLite）：本地用 `docker-compose.yml` 起 PG（主机端口 **5433**，避开本机原生 PG 占的 5432），云端 RDS；靠 `DATABASE_URL` 切换。起库：`docker compose up -d --wait`。
 - DB 列名用英文（驱动/工具/Alembic 友好）；JSON 内容仍是中文 Pydantic dump。
@@ -48,7 +48,7 @@
 ## 构建顺序（本地、逐步验证）
 1. **DB 地基**：`db.py`（engine/Session/Base/get_db）+ `models_db.py`（User/Scenario/Game）+ config `DATABASE_URL` + Alembic 首版迁移。
 2. **auth**：register/login/me + JWT + `current_user`/`current_admin` 依赖 + seed admin。
-3. **剧本→DB**：list/get/create/update/delete + 可见性/拥有权 + 导入 武侠001。
+3. **剧本→DB**：list/get/create/update/delete + 可见性/拥有权（剧本由用户自建存 DB；不 seed 示范剧本）。
 4. **游戏→DB**：移除 _cache、create/get/save/list/delete 绑 user。
 5. **前端**：登录/注册 + Bearer + 整数 id + admin 显示持有者。
 6. **测试**：DB fixture（连本地 docker PG 的测试库）+ auth fixture，重写 test_api/test_scenario；CI 加 `services: postgres` 容器跑测试（与生产同引擎）。

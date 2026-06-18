@@ -15,7 +15,7 @@ backend/
   engine.py     行动条 / 两轴 / 迷雾 / delta / TTL / 账本整理辅助（纯函数）
   agents.py     裁决 / 叙事 / 角色意图+反应 / 摘要 / 整理 / 编剧
   flow.py       开局推进 + 串流逐拍 + 每拍维护（TTL/整理/摘要）
-  scenario.py   Scenario↔Session 转换 + 编剧套用 + 首次 seed 武侠001
+  scenario.py   Scenario↔Session 转换 + 编剧套用（剧本只在 DB，不再 seed 示范剧本）
   ── 存储 / 鉴权 ──
   db.py         SQLAlchemy engine/SessionLocal/Base/get_db
   models_db.py  ORM 表：users / scenarios / games（软删除 + JSON 列）
@@ -31,7 +31,7 @@ backend/
 alembic/        数据库迁移（版控；容器启动跑 alembic upgrade head）
 tests/          pytest 套件（CI 跑；集成测试连真 PG）
   conftest.py（夹具）test_engine/test_flow/test_scenario/test_api.py
-scenarios/      剧本种子（仅首次 seed 导入 DB 用）  武侠001.json
+scenarios/      开发者参考样例（满栏位模板，运行时不读、不 seed；数据全在 DB）  见 scenarios/README.md
 frontend/       Vue 3 SPA（Vite+Pinia+Router）：登录 / 剧本集 / 编剧页 / 游玩页
 docker-compose.yml  本地 Postgres（host 5433）+ adminer
 ```
@@ -57,7 +57,7 @@ docker compose up -d --wait        # 起 PG（host 5433）+ adminer（http://loc
 **2) API 服务器**（终端机 A）
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8100
-# Swagger：http://127.0.0.1:8100/docs   |   首启自动 seed admin（若设了 ADMIN_PASSWORD）+ 武侠001
+# Swagger：http://127.0.0.1:8100/docs   |   首启仅 seed admin（若设了 ADMIN_PASSWORD）；剧本由用户自建
 ```
 
 **3) 前端 Vue dev server**（终端机 B）

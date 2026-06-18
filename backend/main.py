@@ -14,23 +14,17 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import config, deps, scenario as scen
+from . import config, deps
 from .routes import scenarios, game, feedback
 from .routes import auth as auth_routes
 from .auth import seed_admin
-from .db import SessionLocal
 
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL, logging.INFO))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    seed_admin()                       # 空库首次：从 env 建 admin
-    db = SessionLocal()
-    try:
-        scen.seed_demo_scenario(db)    # 空库首次：导入 武侠001 为 admin 的已发布剧本
-    finally:
-        db.close()
+    seed_admin()                       # 空库首次：从 env 建 admin（剧本不再 seed，由用户自建存 DB）
     yield
     await deps.close_grok()
 

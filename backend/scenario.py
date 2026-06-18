@@ -1,32 +1,11 @@
-"""剧本（Scenario）的转换与首次种子导入。
+"""剧本（Scenario）的转换。
 
-存储已迁到 DB（见 models_db.Scenario）；本模块保留：
-- Pydantic 转换：scenario_from_session / session_from_scenario / apply_author_reply（编剧合并）
-- seed_demo_scenario：首次（scenarios 表为空）把 武侠001.json 导入为 admin 的已发布剧本
+存储全在 DB（见 models_db.Scenario）；本模块只管 Pydantic 转换：
+scenario_from_session / session_from_scenario / apply_author_reply（编剧合并）。
+DB 初始化不再注入任何示范剧本——剧本一律由用户经编剧页/接口创建后存 DB。
 """
-import json
-from pathlib import Path
 from .models import Scenario, Session, CharLedger
-from .models_db import Scenario as DBScenario, User
 from . import engine, config
-
-SCENARIOS_DIR = Path(__file__).resolve().parent.parent / "scenarios"   # 仅作首次 seed 来源
-
-
-def seed_demo_scenario(db) -> None:
-    """首次启动（scenarios 表为空）把 武侠001.json 导入 DB（作者=admin、published）。"""
-    if db.query(DBScenario.id).first() is not None:
-        return
-    admin = db.query(User).filter(User.is_admin.is_(True)).first()
-    if not admin:
-        return
-    path = SCENARIOS_DIR / "武侠001.json"
-    if not path.exists():
-        return
-    sc = Scenario(**json.loads(path.read_text(encoding="utf-8")))   # 验证
-    db.add(DBScenario(title=sc.id or "武侠001", author_id=admin.id,
-                      visibility="published", content=sc.model_dump()))
-    db.commit()
 
 
 def scenario_from_session(s: Session, sid: str) -> Scenario:
