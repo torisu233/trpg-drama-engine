@@ -30,7 +30,7 @@ COPY alembic/ ./alembic/
 RUN useradd -m app && chown -R app /app
 USER app
 
-# App Runner 默认从 8080 注入 PORT；监听 0.0.0.0 才能从容器外访问
+# Cloud Run 默认从 8080 注入 PORT；监听 0.0.0.0 才能从容器外访问
 ENV PORT=8080
 EXPOSE 8080
 
@@ -40,8 +40,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 
 # 启动先跑迁移再起服务：
 # - alembic upgrade head：空库自动建表、已最新则跳过（幂等，重启/重部署都安全）。
-#   失败（如 DB 连不上）即退出 → ECS 重启重试，日志可见原因。
+#   失败（如 DB 连不上）即退出 → Cloud Run 重启重试，日志可见原因。
 # - exec uvicorn：让 uvicorn 取代 shell 成为主进程，直接收 SIGTERM（关闭干净）。
-#   ${PORT} 由 ECS Express 注入（容器端口 8080）。
-# 注：单任务（Express 默认 minTask=1）无并发迁移竞争；将来多任务需另设迁移闸。
+#   ${PORT} 由 Cloud Run 注入（容器端口 8080）。
+# 注：Cloud Run 缩到零/多实例时，首个冷启动跑迁移（alembic 幂等）；并发多实例同时冷启有轻微竞争，将来需另设迁移闸（或改由 CI 部署前单跑一步）。
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
