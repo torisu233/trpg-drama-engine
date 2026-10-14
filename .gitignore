@@ -1,4 +1,4 @@
-# 机密：不提交真实 API key
+# Secrets: never commit real API keys
 .env
 
 # Python
@@ -7,18 +7,18 @@ __pycache__/
 *.pyc
 *.pyo
 
-# 测试覆盖率资料档（pytest-cov 产物）
+# Test coverage artifacts
 .coverage
 htmlcov/
 .pytest_cache/
 
-# Claude Code 本地工具配置
+# Local assistant tooling config
 .claude/
 
-# 运行期资料/日志（旧 JSON 存盘遗留目录；数据现已在 DB）
+# Runtime data / logs (legacy JSON save dir; data now lives in the DB)
 data/
 *.log
 
-# 编辑器
+# Editors
 .vscode/
 .idea/

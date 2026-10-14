@@ -1,141 +1,136 @@
-# TRPG 原型 · 戏剧引擎跑团
+# TRPG Drama Engine
 
 [![CI](https://github.com/torisu233/trpg-drama-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/torisu233/trpg-drama-engine/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-依 [`docs/设计文档.md`](docs/设计文档.md) 的**戏剧引擎**（状态账本 + LLM 裁决取代骰子数值）做的多 agent 跑团原型。两大功能：**剧本设计**（编剧 agent）与**实际游玩**。多用户（注册/登录），数据存 PostgreSQL，已上云（AWS ECS Express + RDS，见 [`docs/部署.md`](docs/部署.md)）。
+A multi-agent LLM game engine where a **state ledger and LLM adjudication replace dice rolls** — built as a full-stack, tested, continuously deployed web app.
 
-## 架构
+Players co-write a tabletop-style scene with AI-controlled allies and opponents. Instead of hit points and probability tables, every action is judged by a neutral adjudicator agent against an explicit ledger of facts ("bound hands", "afraid of fire", "promised not to attack during the talks"), and the outcome is written back to the ledger as a structured delta.
 
-```
-backend/
-  ── 内核（框架无关）──
-  models.py     数据模型：World/CharCard/Ledger/Session/Scenario + LLM I/O（中文字段）
-  config.py     平衡常数（行动条/运气/摘要/整理门槛/温度）+ DATABASE_URL/JWT 设置
-  grok_client.py  LLM 客户端（openai SDK 指向 DeepSeek，OpenAI 兼容 + instructor，自动重问）
-  engine.py     行动条 / 两轴 / 迷雾 / delta / TTL / 账本整理辅助（纯函数）
-  agents.py     裁决 / 叙事 / 角色意图+反应 / 摘要 / 整理 / 编剧
-  flow.py       开局推进 + 串流逐拍 + 每拍维护（TTL/整理/摘要）
-  scenario.py   Scenario↔Session 转换 + 编剧套用（剧本只在 DB，不再 seed 示范剧本）
-  ── 存储 / 鉴权 ──
-  db.py         SQLAlchemy engine/SessionLocal/Base/get_db
-  models_db.py  ORM 表：users / scenarios / games（软删除 + JSON 列）
-  auth.py       bcrypt 哈希 + JWT 签发/校验 + current_user/admin + seed admin
-  game_store.py 游戏场次（存 DB，绑 user）+ snapshot（喂前端）
-  ── API（FastAPI）──
-  main.py       app 入口（供前端 dist + /api；lifespan seed）
-  deps.py       共用 Grok client
-  routes/       auth.py（注册/登录/me）, scenarios.py（CRUD+编剧）, game.py（游玩）
-  scene.py      in-code 酒馆 session（脱机测试 fixture）
-  ── live 诊断脚本（会打 Grok，不在 CI）──
-  mode_test.py 非战斗模式验证   author_test.py 编剧 agent 验证
-alembic/        数据库迁移（版控；容器启动跑 alembic upgrade head）
-tests/          pytest 套件（CI 跑；集成测试连真 PG）
-  conftest.py（夹具）test_engine/test_flow/test_scenario/test_api.py
-scenarios/      开发者参考样例（满栏位模板，运行时不读、不 seed；数据全在 DB）  见 scenarios/README.md
-frontend/       Vue 3 SPA（Vite+Pinia+Router）：登录 / 剧本集 / 编剧页 / 游玩页
-docker-compose.yml  本地 Postgres（host 5433）+ adminer
-```
+The core design idea is that **LLM output is untrusted input**: models propose, deterministic code disposes.
 
-## 安装
-```powershell
-cd trpg-drama-engine
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt   # 含运行期 + pytest
-Copy-Item .env.example .env        # 填 LLM_API_KEY；本机想要 admin 就填 ADMIN_PASSWORD
+## Highlights
+
+- **Structured LLM outputs with automatic re-asking.** Every agent call goes through [instructor](https://github.com/567-labs/instructor) + Pydantic schemas; validation errors are fed back to the model and retried ([`backend/llm_client.py`](backend/llm_client.py)).
+- **Separation of powers between agents.** Character agents can only express intent; only the adjudicator may change state, and only through a typed `ledger_delta`. The engine resolves model-supplied names to ids at the boundary and never indexes state with raw LLM keys.
+- **Three-layer test suite.** Pure-logic unit tests, API integration tests against a real PostgreSQL (auth boundaries: 401 / 403 / 404-without-leaking-existence), and offline **LLM-contract tests** that drive a full turn with a hostile-but-schema-valid fake model — written after real production incidents.
+- **CI/CD with keyless cloud auth.** GitHub Actions runs the suite against a Postgres service container, then builds a multi-stage Docker image and deploys. Deployed first to AWS (ECR + ECS Express + RDS, via GitHub OIDC), later migrated to GCP (Artifact Registry + Cloud Run + Cloud SQL, via Workload Identity Federation). No long-lived cloud keys anywhere.
+- **Multi-user web app.** FastAPI + SQLAlchemy 2.0 + Alembic (migrations run on container start), bcrypt + JWT auth, per-user ownership and private/published visibility, Vue 3 SPA.
+- **Streaming gameplay.** Each turn streams as NDJSON snapshots; player-visible parts are revealed as soon as they exist while adjudication and narration are still running, without leaking hidden enemy intent.
+
+> The hosted demo has been shut down. The deploy job is disabled unless the repository variable `DEPLOY_ENABLED` is `true`; see [docs/deployment.md](docs/deployment.md) for how it worked.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI["Vue 3 SPA<br/>(Vite, Pinia, Router)"] -- "REST + NDJSON stream<br/>(JWT bearer)" --> API
+
+    subgraph Backend["FastAPI backend"]
+        API["routes/<br/>auth · scenarios · game · feedback"] --> FLOW["flow.py<br/>turn orchestration"]
+        FLOW --> ENGINE["engine.py<br/>pure logic: gauge, fog,<br/>two-axis check, deltas, TTL"]
+        FLOW --> AGENTS["agents.py<br/>adjudicator · narrator ·<br/>characters · author · summarizer"]
+        AGENTS --> LLM["llm_client.py<br/>OpenAI SDK + instructor"]
+        API --> STORE["game_store.py / models_db.py<br/>SQLAlchemy 2.0"]
+    end
+
+    LLM -- "JSON mode,<br/>validated + re-asked" --> PROVIDER[("OpenAI-compatible LLM<br/>(DeepSeek by default)")]
+    STORE --> DB[("PostgreSQL<br/>Alembic migrations")]
 ```
 
-## 跑起来（本地三件套）
+| Module | Responsibility |
+|---|---|
+| `backend/models.py` | Pydantic models: world, character cards, ledger, session, scenario, and every LLM input/output schema |
+| `backend/engine.py` | Framework-free pure functions: action gauge, two-axis reaction/contest check, fog-of-war views, delta application, TTL expiry, name→id resolution, session invariants |
+| `backend/agents.py` | Prompt assembly for the adjudicator, narrator, character intent/reaction, summarizer, ledger consolidation and authoring agent |
+| `backend/flow.py` | Turn loop as a generator: intent → (reaction) → adjudication → delta → narration → distribution → per-turn maintenance |
+| `backend/llm_client.py` | Single LLM entry point (`call(prompt, Schema)`), provider-neutral via `LLM_*` env vars |
+| `backend/routes/` | REST API: auth, scenario CRUD + authoring, stateful play with streaming, user↔admin feedback |
+| `backend/auth.py`, `models_db.py`, `game_store.py` | bcrypt/JWT auth, ORM tables (soft delete + JSON columns), persisted game sessions and snapshots |
+| `alembic/` | Versioned schema migrations, applied on container start |
+| `frontend/` | Vue 3 SPA: login, scenario library, authoring page (editable panel + chat), play page |
 
-数据库、后端、前端分开跑。
+## Testing
 
-**1) Postgres**（数据库，docker）
-```powershell
-docker compose up -d --wait        # 起 PG（host 5433）+ adminer（http://localhost:8888）
-.\.venv\Scripts\python.exe -m alembic upgrade head   # 首次：建表
+```bash
+pip install -r requirements-dev.txt
+docker compose up -d --wait      # PostgreSQL for the integration tests (host port 5433)
+pytest                           # runs with coverage (see pyproject.toml)
 ```
 
-**2) API 服务器**（终端机 A）
-```powershell
-.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8100
-# Swagger：http://127.0.0.1:8100/docs   |   首启仅 seed admin（若设了 ADMIN_PASSWORD）；剧本由用户自建
-```
+**Strategy: test the deterministic machine exhaustively; isolate the non-deterministic LLM.** No test calls a real model, so the suite runs offline and CI needs no secrets.
 
-**3) 前端 Vue dev server**（终端机 B）
-```powershell
-cd frontend
-npm install        # 首次
-npm run dev        # http://localhost:5173 （/api 自动代理到 8100）
-```
-浏览器开 **http://localhost:5173**：注册/登录 → 剧本集 → 新建/编辑（聊天+面板）→ 游玩。（皆走前后端，无命令行入口。）
-
-**测试**（pytest）
-```powershell
-docker compose up -d --wait        # 集成测试连真 PG（独立测试库 trpg_test，不碰你的数据）
-.\.venv\Scripts\python.exe -m pytest
-```
-纯逻辑测试（engine/flow/scenario）不连 DB；只有 `test_api` 需要 PG。策略见 [`tests/README.md`](tests/README.md)。
-
-## 公开访问
-
-**线上多用户版已部署在 AWS**（ECS Express + RDS）：`git push master` 即自动测试→build→推 ECR→上云。访问控制靠**用户 auth**（注册/登录 + JWT）。架构、AWS 资源、网络（app 公开子网 / RDS 私有子网 / 免 NAT）、启动迁移等见 [`docs/部署.md`](docs/部署.md)。
-
-> 本机临时分享（隧道）方式已移除：要给别人玩就用云端 URL，或对方在你局域网内连你的 `:5173`/`:8100`。
-
-## API
-
-所有 `/api/*`（`/api/health` 与 `/api/auth/register`·`/login` 除外）都需带 `Authorization: Bearer <jwt>`。
-
-**鉴权**
-| 方法 | 路径 | 作用 |
+| Layer | Files | What it covers |
 |---|---|---|
-| POST | `/api/auth/register` | `{username,password}` → `{token,username,is_admin}` |
-| POST | `/api/auth/login` | 同上 |
-| GET | `/api/auth/me` | 当前用户 |
-| POST | `/api/auth/change-password` | `{old_password,new_password}`（验旧密码→存新哈希） |
+| Unit | `test_engine.py`, `test_flow.py`, `test_scenario.py` | Gauge scheduling, fog-of-war visibility, the two-axis rules (parametrized), delta application, TTL expiry, summarization/consolidation triggers (LLM monkeypatched), scenario round-trips and merge semantics |
+| Integration | `test_api.py` | FastAPI `TestClient` against a real PostgreSQL test database (isolated with `TRUNCATE … RESTART IDENTITY`): register/login, scenario CRUD, visibility and ownership, game ownership returning 404 so existence isn't leaked |
+| LLM contract | `test_llm_contract.py` | A `FakeLLM` returns schema-valid but hostile output — characters keyed by display name, `self:<name>` visibility, keys for characters that don't exist — and drives a complete turn. Guards the class of bugs that only appear at the free-form-LLM ↔ strict-code boundary; reverting the boundary fix reproduces the original production `KeyError`. |
+| Prompt assembly | `test_agents.py` | Captures assembled prompts with a fake client and asserts the right sections are present or absent |
 
-**剧本／编剧**（剧本 id 为整数；private/published 可见性 + 拥有权）
-| 方法 | 路径 | 作用 |
+Prompt *quality* is deliberately not unit-tested; it is checked with live diagnostic scripts (`backend/mode_test.py`, `backend/author_test.py`) that call the real model and are excluded from CI. Details: [tests/README.md](tests/README.md).
+
+## CI/CD & deployment
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+1. **test** — every push and PR: Python 3.13, pip cache, PostgreSQL 16 service container, `pytest` with coverage.
+2. **deploy** — `master` only, after tests pass (now gated by `vars.DEPLOY_ENABLED`): build the multi-stage image (Node builds the SPA, a slim non-root Python image serves API + static files), push it tagged with the git SHA, deploy that exact SHA.
+
+The deployment evolved in two phases:
+
+| | AWS (June 2026) | GCP (July 2026) |
 |---|---|---|
-| GET | `/api/scenarios` | 列出（published 或自己的；admin 看全部） |
-| GET | `/api/scenarios/{id}` | 读一份（含 content） |
-| POST | `/api/scenarios` | 新建 `{scenario, visibility}` → `{id,...}` |
-| POST | `/api/scenarios/{id}/copy` | 克隆可读剧本为我的私人副本（在别人发布的剧本上改） |
-| PUT | `/api/scenarios/{id}` | 覆写（仅作者/admin） |
-| DELETE | `/api/scenarios/{id}` | 软删除（仅作者/admin） |
-| POST | `/api/author/turn` | 编剧对话：`{scenario,history,message}` → `{reply, scenario(已合并), 区块, missing, done}` |
+| Registry | Amazon ECR | Artifact Registry |
+| Compute | ECS Express Mode (Fargate + ALB + HTTPS) | Cloud Run (scale to zero) |
+| Database | RDS PostgreSQL in private subnets | Cloud SQL via the built-in unix-socket connector |
+| Network | Custom VPC: public app subnet, private DB subnet, no NAT gateway | No VPC needed |
+| CI auth | GitHub OIDC → IAM role | Workload Identity Federation → service account |
 
-**游玩**（有状态，存 DB；游戏永远私人）
-| 方法 | 路径 | 作用 |
-|---|---|---|
-| GET | `/api/games` | 我的进行中清单（admin 看全部带 owner） |
-| POST | `/api/game/new` | `{scenario_id}` → 开局 snapshot |
-| GET | `/api/game/{id}` | 取 snapshot |
-| POST | `/api/game/{id}/action` | `{action:{行动,目标,隐蔽}}` → **NDJSON 串流**（逐拍 snapshot） |
-| POST | `/api/game/{id}/react` | `{reaction:{反应}}` → **NDJSON 串流** |
-| DELETE | `/api/game/{id}` | 软删除（仅本人/admin） |
+The application and migrations needed no changes for the move: both read a single `DATABASE_URL`. Full write-up, including the reasoning behind each choice: [docs/deployment.md](docs/deployment.md).
 
-snapshot ≈ `{game_id, 回合数, 结束, pending, 公开日志, 日志(结构化逐拍), 在场, 行动条, 局面, 角色(我方详尽/敌方隐藏), 账本调试}`。
+## Running locally
 
-**反馈聊天**（用户↔admin；一用户一会话线，统一独立页面 `/feedback`、`/admin/feedback`）
-| 方法 | 路径 | 作用 |
-|---|---|---|
-| GET/POST | `/api/feedback` | 用户读/发自己那条会话（`current_user`） |
-| GET | `/api/feedback/threads` | admin：所有会话列表 + 未读数（`current_admin`） |
-| GET | `/api/feedback/{user_id}` | admin：读某用户会话（打开即标已读） |
-| POST | `/api/feedback/{user_id}` | admin：回复某用户 |
+Requirements: Python 3.13, Node 20, Docker (for PostgreSQL), and an API key for any OpenAI-compatible endpoint.
 
-## 路线图
-- [x] 内核戏剧引擎（行动条/两轴/裁决/叙事/迷雾/摘要/账本整理）
-- [x] 世界观法则 + 双用角色卡（含秘密弱点）+ 社会事实长期记忆
-- [x] 模式中立 prompt（对话/交涉/潜入皆适用）+ 叙事丰富度
-- [x] 剧本数据层 + 编剧 agent + 全可编辑编剧页
-- [x] Vue 3 前端：登录 / 剧本集 / 编剧页 / 游玩页
-- [x] 游玩逐拍串流 + 实时行动条 + 玩家视图/角色面板 + 结构化逐拍日志
-- [x] pytest 测试套件（单元+集成，集成连真 PG，74% 覆盖）
-- [x] GitHub Actions CI（push 跑 pytest）+ Docker 多阶段镜像
-- [x] **git push → 全自动上云**：CI 经 OIDC build→推 ECR→部署 AWS ECS Express（见 [`docs/部署.md`](docs/部署.md)）
-- [x] JSON → PostgreSQL/SQLAlchemy + Alembic（云端 RDS 持久化）
-- [x] 用户 auth 登录（注册/登录 + JWT，取代共享密码）
-- [x] 复制别人发布的剧本来改；用户菜单（改密码 + 显示密码切换）
-- [x] 反馈聊天（用户↔admin，统一独立页面 + 未读标记 + 8 秒轮询）
-- [ ] 批量叙事（多 NPC 拍揉成一段，文气更佳）
+```bash
+python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+cp .env.example .env                                  # set LLM_API_KEY; set ADMIN_PASSWORD for a local admin
+
+docker compose up -d --wait                           # PostgreSQL on 5433 (+ adminer on 8888)
+alembic upgrade head
+
+uvicorn backend.main:app --reload --port 8100         # API + Swagger UI at http://127.0.0.1:8100/docs
+
+cd frontend && npm install && npm run dev             # http://localhost:5173 (proxies /api to 8100)
+```
+
+Register an account, create a scenario on the authoring page (chat with the authoring agent or fill in the panel; [the reference scenario](scenarios/example-fantasy-broken-sword-inn.json) shows every field populated), then play.
+
+## How the engine works
+
+Design document: [docs/design.md](docs/design.md). In short:
+
+- **Two-layer state.** Static data (world tone/background/**laws**, dual-purpose character cards) is separated from the mutable **ledger** (posture, conditions, status effects, items, spatial/scene/social facts). Only the adjudicator changes the ledger, via `ledger_delta`.
+- **Dual-purpose character cards.** Acting fields (personality, voice, motive, tactics) drive the character agent; adjudication fields (abilities, defenses, weaknesses) are seen only by the adjudicator and the character itself — so a weakness like "afraid of fire" is a secret players can discover and exploit.
+- **Action gauge instead of rigid turns.** Each character accumulates gauge at a speed derived from its current state; at the threshold it acts and keeps the overflow, so long-run action ratios equal speed ratios. Injuries slow you down on the very next tick.
+- **Two-axis check.** Axis A: should the target get a reaction (does it perceive the action, can it resist, is it the player)? Axis B: is the outcome genuinely contested (hidden luck oracle)? The two are independent.
+- **Forced reasoning protocol.** The adjudicator must list relevant conditions, rule on each, choose an outcome on a ladder (`success` / `success_with_cost` / `reversal`), emit the delta, and decide who perceived what (`perception_map`).
+- **Fog of war.** Every fact has a visibility (`public`, `gm`, `faction:<faction>`, `self:<id>`); each agent only sees the view it can perceive. Covert actions can be seen through — the adjudicator decides and may produce a cover story.
+- **Long-scene maintenance.** Transient conditions expire after a TTL, a consolidation pass triggered by code-side thresholds merges near-duplicate facts (added after live experiments showed the model would not reliably de-duplicate when merely asked to in the prompt), and per-character rolling summaries keep context bounded.
+- **Authoring agent.** A stateless agent edits one block of the scenario per turn; changes are merged field by field ("empty means unchanged") so it can never wipe content by omission.
+
+## API overview
+
+All `/api/*` routes except `/api/health`, `/api/auth/register` and `/api/auth/login` require `Authorization: Bearer <jwt>`. Interactive docs at `/docs`.
+
+| Area | Endpoints |
+|---|---|
+| Auth | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/change-password` |
+| Scenarios | `GET/POST /api/scenarios`, `GET/PUT/DELETE /api/scenarios/{id}`, `POST /api/scenarios/{id}/copy`, `POST /api/author/turn` |
+| Play | `GET /api/games`, `POST /api/game/new`, `GET /api/game/{id}`, `POST /api/game/{id}/action` (NDJSON stream), `POST /api/game/{id}/react` (NDJSON stream), `GET /api/game/{id}/suggest`, `DELETE /api/game/{id}` |
+| Feedback | `GET/POST /api/feedback`, `GET /api/feedback/threads`, `GET/POST /api/feedback/{user_id}` (admin) |
+
+## License
+
+[MIT](LICENSE)

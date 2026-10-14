@@ -1,12 +1,12 @@
-# 项目工具配置。这里放 pytest 与 coverage 的配置（取代散落的 pytest.ini/.coveragerc）。
+# Tool configuration: pytest and coverage (instead of scattered pytest.ini / .coveragerc).
 [tool.pytest.ini_options]
-testpaths = ["tests"]          # 只在 tests/ 找测试
-pythonpath = ["."]             # 把仓库根加进 import 路径，让 `import backend.xxx` 可用
-addopts = "-q --cov=backend --cov-report=term-missing"   # 默认安静模式 + 覆盖率报告
+testpaths = ["tests"]          # only collect tests from tests/
+pythonpath = ["."]             # repo root on the import path so `import backend.xxx` works
+addopts = "-q --cov=backend --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["backend"]
-# 这些是会打 Grok 的 live 诊断脚本，不在离线测试范围，排除以免拉低覆盖率数字
+# Live diagnostic scripts that call the real LLM; outside the offline suite, so excluded from coverage
 omit = [
     "backend/mode_test.py",
     "backend/author_test.py",

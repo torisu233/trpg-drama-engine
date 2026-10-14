@@ -1,16 +1,21 @@
-# 缩小 build 上下文 + 避免把不该进镜像的东西带进去
+# Keep the build context small and keep things out of the image that don't belong there.
+# (.dockerignore only supports full-line comments.)
 .git
 .github
 .venv
 **/__pycache__
 **/*.pyc
 **/node_modules
-frontend/dist          # 在容器内重新 build，别用宿主机的旧产物
-data                   # 旧 JSON 存盘遗留目录（数据现已在 DB）
-.env                   # 密钥绝不进镜像（运行时注入）
+# Rebuilt inside the container; never ship a stale host build
+frontend/dist
+# Legacy JSON save directory (data now lives in the DB)
+data
+# Secrets are injected at runtime, never baked into the image
+.env
 .coverage
 .pytest_cache
-tests                  # 测试不进生产镜像（CI 另跑）
+# Tests run in CI, not in the production image
+tests
 docs
-*.ps1                  # Windows 本机脚本（不进镜像）
+*.ps1
 .claude

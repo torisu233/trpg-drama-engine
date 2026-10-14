@@ -1,88 +1,91 @@
 name: CI
 
-# 触发：推送到任何分支、或开 Pull Request 时都跑——坏了马上知道。
+# Run on every push to any branch and on pull requests, so breakage shows up immediately.
 on:
   push:
   pull_request:
 
 jobs:
   test:
-    name: pytest (离线 + Postgres)
-    runs-on: ubuntu-latest          # GitHub 提供的一台全新 Linux 机器
-    # 集成测试连真 Postgres（dev/prod 一致）：起一个临时 PG service container，
-    # 映射到 host 5433（对齐本地 docker-compose 与 conftest 默认 DATABASE_URL）。
+    name: pytest (offline + Postgres)
+    runs-on: ubuntu-latest
+    # Integration tests hit a real PostgreSQL (dev/prod parity): start a throwaway service
+    # container mapped to host 5433, matching docker-compose and the conftest default DATABASE_URL.
     services:
       postgres:
         image: postgres:16
         env:
           POSTGRES_USER: trpg
           POSTGRES_PASSWORD: trpg
-          POSTGRES_DB: trpg        # conftest 连此库 CREATE DATABASE trpg_test
+          POSTGRES_DB: trpg        # conftest connects here and creates the trpg_test database
         ports:
           - 5433:5432
-        # 等 PG 真的就绪再跑步骤，避免连接竞态
+        # Wait until Postgres is actually ready to avoid connection races
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
     steps:
-      # 1) 把仓库 clone 进这台机器
       - uses: actions/checkout@v4
 
-      # 2) 装 Python；cache:pip 把依赖缓存起来，第二次跑更快
+      # cache: pip reuses downloaded dependencies on later runs
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: 'pip'
 
-      # 3) 装依赖（含 pytest / pytest-cov；-r requirements-dev.txt 内含 -r requirements.txt）
-      - name: 安装依赖
+      # requirements-dev.txt includes requirements.txt plus pytest / pytest-cov
+      - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      # 4) 跑测试。不打 Grok（conftest 设 dummy key），故 CI 不必持有 Grok 密钥；
-      #    集成测试连上面的 PG service（conftest 默认 DATABASE_URL 即 localhost:5433/trpg_test）。
-      - name: 跑 pytest
+      # Tests never call the LLM (conftest sets a dummy key), so CI needs no secrets.
+      # Integration tests use the Postgres service above (conftest default: localhost:5433/trpg_test).
+      - name: Run pytest
         run: pytest
 
-  # 测试过了、且是 master 时：build 镜像推 Artifact Registry → 部署 Cloud Run（push→自动上云）
+  # After tests pass on master: build the image, push to Artifact Registry, deploy to Cloud Run.
+  # The hosted service has been shut down; this job only runs when the repository variable
+  # DEPLOY_ENABLED is set to 'true' (plus the GCP variables and secrets below).
   deploy:
-    name: build & deploy 到 Cloud Run
-    needs: test                              # 测试不过就不部署
-    if: github.ref == 'refs/heads/master'    # PR / 其他分支只跑 test
+    name: Build & deploy to Cloud Run
+    needs: test
+    if: github.ref == 'refs/heads/master' && vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     permissions:
-      id-token: write                        # 用 WIF 换 GCP 临时凭证（无长期密钥）
+      id-token: write                        # exchange a GitHub OIDC token for short-lived GCP credentials
       contents: read
     env:
-      IMAGE: ${{ vars.GCP_IMAGE }}           # asia-northeast1-docker.pkg.dev/<proj>/trpg/trpg
+      IMAGE: ${{ vars.GCP_IMAGE }}           # <region>-docker.pkg.dev/<project>/trpg/trpg
     steps:
       - uses: actions/checkout@v4
 
       - id: auth
-        name: 经 Workload Identity Federation 取得 GCP 凭证
+        name: Authenticate to GCP via Workload Identity Federation (no long-lived keys)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
 
-      - name: 安装 gcloud
+      - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Docker 认证 Artifact Registry
+      - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
 
-      - name: build + push（tag：latest 与 git sha）
+      - name: Build and push (tags: latest and git sha)
         run: |
           docker build -t "$IMAGE:latest" -t "$IMAGE:${{ github.sha }}" .
           docker push "$IMAGE:latest"
           docker push "$IMAGE:${{ github.sha }}"
 
-      # 部署刚 build 的那个 sha（精确部署本次产物，不靠 latest）。
-      # --add-cloudsql-instances：Cloud Run 内建连接器挂 Cloud SQL unix socket（DATABASE_URL 用 ?host=/cloudsql/<conn>）。
-      # --service-account：以运行 SA（有 cloudsql.client）身份跑。--timeout 600：容多拍串流。
-      # 密钥经 --set-env-vars 注入；用 ^~^ 改分隔符，避免 DATABASE_URL 里的 = / @ : 被误解析（值内无 ~）。
-      - name: 部署 Cloud Run（创建或更新）
+      # Deploy the exact sha just built (not :latest).
+      # --add-cloudsql-instances: Cloud Run's built-in connector mounts the Cloud SQL unix socket
+      #   (DATABASE_URL uses ?host=/cloudsql/<connection-name>).
+      # --service-account: run as the runtime SA that holds cloudsql.client. --timeout 600 allows long streams.
+      # Secrets are injected with --set-env-vars; ^~^ switches the delimiter so the = / @ : characters
+      # inside DATABASE_URL are not misparsed.
+      - name: Deploy to Cloud Run (create or update)
         run: |
           gcloud run deploy trpg \
             --image "$IMAGE:${{ github.sha }}" \
@@ -94,5 +97,5 @@ jobs:
             --max-instances 3 \
             --set-env-vars "^~^DATABASE_URL=${{ secrets.DATABASE_URL }}~JWT_SECRET=${{ secrets.JWT_SECRET }}~ADMIN_USERNAME=${{ vars.ADMIN_USERNAME }}~ADMIN_PASSWORD=${{ secrets.ADMIN_PASSWORD }}~LLM_API_KEY=${{ secrets.LLM_API_KEY }}"
 
-      - name: 打印服务 URL
+      - name: Print service URL
         run: gcloud run services describe trpg --region "${{ vars.GCP_REGION }}" --format='value(status.url)'

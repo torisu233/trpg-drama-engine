@@ -4,10 +4,10 @@ pydantic>=2.5.0
 python-dotenv>=1.0.0
 openai>=1.40.0
 instructor>=1.4.0
-# 数据库 + 迁移
+# Database + migrations
 sqlalchemy>=2.0.0
 alembic>=1.13.0
-psycopg2-binary>=2.9.0   # PostgreSQL 驱动（本地 docker PG + 云端 RDS）
+psycopg2-binary>=2.9.0   # PostgreSQL driver
 # Auth
-bcrypt>=4.1.0            # 密码哈希
-pyjwt>=2.8.0             # 签发/校验 JWT
+bcrypt>=4.1.0            # password hashing
+pyjwt>=2.8.0             # issue / verify JWTs
