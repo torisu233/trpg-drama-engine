@@ -1,9 +1,9 @@
-"""剧本路由：DB 持久化 + 权限（visibility/拥有权）+ 编剧 agent 对话。
+"""Scenario routes: DB persistence + permissions (visibility/ownership) + author agent chat.
 
-- 列表：published 或自己的；admin 看全部（带作者 username）。
-- 读：published 人人可读；private 仅作者/admin。
-- 建/改/删：登录用户；改删仅作者/admin；删=软删除。
-- 编剧 turn：无状态（前端持草稿），仅需登录。
+- List: published or your own; admin sees all (with author username).
+- Read: published is readable by everyone; private only by the author/admin.
+- Create/update/delete: logged-in users; update/delete only by the author/admin; delete = soft delete.
+- Author turn: stateless (the frontend holds the draft), login required.
 """
 import copy
 from fastapi import APIRouter, Depends, HTTPException
@@ -16,13 +16,13 @@ from ..models_db import Scenario as DBScenario, User
 from ..db import get_db
 from ..auth import current_user
 from .. import scenario as scen, agents
-from ..deps import get_grok
+from ..deps import get_llm
 
 router = APIRouter(prefix="/api", tags=["scenarios / author"])
 
 
 class ScenarioSave(BaseModel):
-    scenario: Scenario              # 整份剧本内容（存进 content JSON 列）
+    scenario: Scenario              # the full scenario content (stored in the content JSON column)
     visibility: str = "private"     # private | published
 
 
@@ -33,7 +33,7 @@ def _vis(v: str) -> str:
 def _row_or_404(db: Session, sid: int) -> DBScenario:
     r = db.query(DBScenario).filter(DBScenario.id == sid, DBScenario.is_active.is_(True)).first()
     if not r:
-        raise HTTPException(404, f"找不到剧本 {sid}")
+        raise HTTPException(404, f"Scenario not found: {sid}")
     return r
 
 
@@ -58,14 +58,14 @@ def list_scenarios(user: User = Depends(current_user), db: Session = Depends(get
 def get_scenario(sid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     r = _row_or_404(db, sid)
     if not (user.is_admin or r.visibility == "published" or r.author_id == user.id):
-        raise HTTPException(403, "无权查看该剧本")
+        raise HTTPException(403, "Not allowed to view this scenario")
     return {"id": r.id, "title": r.title, "visibility": r.visibility,
             "author_id": r.author_id, "content": r.content}
 
 
 @router.post("/scenarios")
 def create_scenario(body: ScenarioSave, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    r = DBScenario(title=body.scenario.id or "未命名剧本", author_id=user.id,
+    r = DBScenario(title=body.scenario.id or "Untitled scenario", author_id=user.id,
                    visibility=_vis(body.visibility), content=body.scenario.model_dump())
     db.add(r)
     db.commit()
@@ -75,16 +75,16 @@ def create_scenario(body: ScenarioSave, user: User = Depends(current_user), db: 
 
 @router.post("/scenarios/{sid}/copy")
 def copy_scenario(sid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """把一份可读剧本克隆为「我的」私人副本（用于在别人发布的剧本上改）。
+    """Clone a readable scenario into a private copy of "mine" (for editing on top of someone else's published scenario).
 
-    读授权同 get_scenario：published / 自己的 / admin 才可读，否则 403（不可复制看不到的私人剧本）。
+    Same read authorization as get_scenario: published / your own / admin, otherwise 403 (you can't copy a private scenario you can't see).
     """
     src = _row_or_404(db, sid)
     if not (user.is_admin or src.visibility == "published" or src.author_id == user.id):
-        raise HTTPException(403, "无权复制该剧本")
-    title = ((src.title or "未命名剧本") + "（副本）")[:120]
+        raise HTTPException(403, "Not allowed to copy this scenario")
+    title = ((src.title or "Untitled scenario") + " (copy)")[:120]
     r = DBScenario(title=title, author_id=user.id, visibility="private",
-                   content=copy.deepcopy(src.content))   # 深拷贝，杜绝副本与原作共享引用
+                   content=copy.deepcopy(src.content))   # deep copy so the copy never shares references with the original
     db.add(r)
     db.commit()
     db.refresh(r)
@@ -95,7 +95,7 @@ def copy_scenario(sid: int, user: User = Depends(current_user), db: Session = De
 def update_scenario(sid: int, body: ScenarioSave, user: User = Depends(current_user), db: Session = Depends(get_db)):
     r = _row_or_404(db, sid)
     if not (user.is_admin or r.author_id == user.id):
-        raise HTTPException(403, "无权修改该剧本")
+        raise HTTPException(403, "Not allowed to modify this scenario")
     r.title = body.scenario.id or r.title
     r.content = body.scenario.model_dump()
     r.visibility = _vis(body.visibility)
@@ -107,24 +107,24 @@ def update_scenario(sid: int, body: ScenarioSave, user: User = Depends(current_u
 def delete_scenario(sid: int, user: User = Depends(current_user), db: Session = Depends(get_db)):
     r = _row_or_404(db, sid)
     if not (user.is_admin or r.author_id == user.id):
-        raise HTTPException(403, "无权删除该剧本")
-    r.is_active = False     # 软删除
+        raise HTTPException(403, "Not allowed to delete this scenario")
+    r.is_active = False     # soft delete
     db.commit()
     return {"ok": True}
 
 
 @router.post("/author/turn")
 async def author_turn(payload: dict, user: User = Depends(current_user)):
-    """body: {scenario, history:[{role,text}], message} → 合并后的整份剧本 + 回复（无状态）。"""
+    """body: {scenario, history:[{role,text}], message} → the merged full scenario + reply (stateless)."""
     sc = Scenario(**payload.get("scenario", {}))
     history = [(h.get("role", ""), h.get("text", "")) for h in payload.get("history", [])]
     message = payload.get("message", "")
-    rep = await agents.author_turn(get_grok(), sc, history, message)
-    更新区块 = scen.apply_author_reply(sc, rep)
+    rep = await agents.author_turn(get_llm(), sc, history, message)
+    updated_block = scen.apply_author_reply(sc, rep)
     return {
         "reply": rep.reply,
         "scenario": sc,
-        "block": 更新区块,
+        "block": updated_block,
         "char_id": rep.char_id,
         "missing": rep.missing,
         "done": rep.done,

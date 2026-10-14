@@ -1,12 +1,12 @@
-"""四个 agent 的封装（adjudication / narration / 角色意图 / 角色反应）。
+"""Wrappers for the four agents (adjudication / narration / character intent / character reaction).
 
-职责对照设计文档第十一节：
-- characters agent：只看可见视图 + 自己的角色卡，出意图/reaction，绝不声明成败
-- adjudication agent：行为裁决 + 知识裁决（双输出），遵守世界观法则与角色特质，以地面真相为唯一依据
-- GM/narration agent：依感知分发逐对象写散文，贴世界观基调，不发明新实体
+Responsibilities, per section 11 of the design doc:
+- character agent: sees only its visible view + its own card; outputs intents/reactions and never declares success or failure
+- adjudication agent: action ruling + knowledge ruling (dual output); obeys the world laws and character traits, with the ground truth as its only source
+- GM/narration agent: writes prose per recipient according to the perception map, matches the world tone, invents no new entities
 """
 from typing import Optional
-from .grok_client import GrokClient
+from .llm_client import LLMClient
 from .models import (
     Session, Intent, Reaction, Adjudication, Narration, Summary,
     Condition, ConsolidateOut, Scenario, AuthorReply,
@@ -15,9 +15,9 @@ from . import engine, config
 
 
 def _roster(s: Session) -> str:
-    """在场角色名册（**用角色名指代**；含性别避免脑补）。"""
-    return "、".join(
-        s.cards[cid].name + (f"（{s.cards[cid].gender}）" if s.cards[cid].gender else "")
+    """Roster of present characters (**referred to by name**; includes gender so nobody guesses)."""
+    return ", ".join(
+        s.cards[cid].name + (f" ({s.cards[cid].gender})" if s.cards[cid].gender else "")
         for cid in s.scene.present if cid in s.cards)
 
 
@@ -25,267 +25,272 @@ def _world_brief(s: Session) -> str:
     w = s.world
     parts = []
     if w.tone:
-        parts.append(f"tone：{w.tone}")
+        parts.append(f"Tone: {w.tone}")
     if w.background:
-        parts.append(f"background：{w.background}")
-    return "\n".join(parts) or "（无特殊世界观）"
+        parts.append(f"Background: {w.background}")
+    return "\n".join(parts) or "(no special setting)"
 
 
 def _world_laws(s: Session) -> str:
-    return "\n".join(f"- {law}" for law in s.world.laws) or "（无特殊法则）"
+    return "\n".join(f"- {law}" for law in s.world.laws) or "(no special laws)"
 
 
 def _action_order_brief(s: Session) -> str:
-    """程序算好的行动次序（谁还有几拍轮到），易读地喂给 agent；不让 AI 自己算行动值。"""
+    """Turn order computed by the program (how many beats until each character acts), fed to agents in readable form; the AI never computes gauges itself."""
     rows = engine.action_order(s)
     if not rows:
         return ""
-    parts = [f"{name}（{faction}）{'即将行动' if 拍 <= 0 else f'约 {拍} 拍后行动'}"
-             for _cid, name, faction, 拍 in rows]
-    return "；".join(parts)
+    parts = [f"{name} ({faction}) {'acts next' if beats <= 0 else f'acts in about {beats} beats'}"
+             for _cid, name, faction, beats in rows]
+    return "; ".join(parts)
 
 
 def _perception_brief(s: Session, perception_map: dict) -> str:
-    """感知分发文本；键经 resolve_id 解析（名字或 id 都行），解析不到的跳过、不崩。"""
+    """Perception map as text; keys go through resolve_id (name or id both work); unresolvable keys are skipped, never crash."""
     rows = []
     for k, lvl in perception_map.items():
         cid = engine.resolve_id(s, k)
         if cid:
-            rows.append(f"- {s.cards[cid].name}：{lvl}")
-    return "\n".join(rows) or "- 全体：all"
+            rows.append(f"- {s.cards[cid].name}: {lvl}")
+    return "\n".join(rows) or "- Everyone: all"
 
 
-def _tielv_block(card) -> str:
-    """扮演铁律块（最高优先·覆盖人设·不越规则）——非空才注入，空返回空串。intent/reaction 共用。"""
+def _directive_block(card) -> str:
+    """Directive block (top priority, overrides the persona, never the rules) — injected only when non-empty, otherwise an empty string. Shared by intent/reaction."""
     if not card.directive:
         return ""
-    return (f"\n# ★directive（最高优先，覆盖上面的人设描述；但不得违反文末「规则」与 JSON 输出格式）"
+    return (f"\n# ★ DIRECTIVE (top priority; overrides the persona description above, but must not violate the Rules or the JSON output format at the end)"
             f"\n{card.directive}\n")
 
 
 def _mates_brief(s: Session, cid: str) -> str:
-    """同阵营在场队友的整张卡（含弱点）——同阵营彼此知底，供 NPC 协同；无队友返回空串。"""
+    """Full cards (incl. weaknesses) of present teammates in the same faction — same-faction characters know each other, so NPCs can coordinate; empty string if no teammates."""
     lines = []
     for oid in engine.faction_mates(s, cid):
         c = s.cards[oid]
         lines.append(
-            f"- {c.name}（{c.faction}{('/' + c.gender) if c.gender else ''}）"
-            f"｜personality {'、'.join(c.personality) or '—'}｜动机 {c.motive or '—'}｜惯用手段 {'、'.join(c.tactics) or '—'}"
-            f"｜abilities {'、'.join(c.abilities) or '—'}｜防御 {'、'.join(c.defenses) or '—'}｜weaknesses {'、'.join(c.weaknesses) or '—'}"
+            f"- {c.name} ({c.faction}{('/' + c.gender) if c.gender else ''})"
+            f" | personality {', '.join(c.personality) or '—'} | motive {c.motive or '—'} | tactics {', '.join(c.tactics) or '—'}"
+            f" | abilities {', '.join(c.abilities) or '—'} | defenses {', '.join(c.defenses) or '—'} | weaknesses {', '.join(c.weaknesses) or '—'}"
         )
     return "\n".join(lines)
 
 
-# ───────────────── characters agent：行动意图 ─────────────────
-async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
+# ───────────────── character agent: action intent ─────────────────
+async def character_intent(llm: LLMClient, s: Session, cid: str) -> Intent:
     card = s.cards[cid]
     view = engine.build_view(s, cid)
     summary = s.summary.get(cid, "")
-    recent = "\n".join(s.memory.get(cid, [])) or "（刚开场）"
-    mem = f"【先前剧情摘要】{summary}\n\n【最近发生】\n{recent}" if summary else recent
+    recent = "\n".join(s.memory.get(cid, [])) or "(the scene has just begun)"
+    mem = f"[Story So Far]\n{summary}\n\n[Recent Events]\n{recent}" if summary else recent
     pcard = s.cards.get(engine.player_id(s))
     player_name = pcard.name if pcard else "player"
-    阵营关系 = {"ally": "与玩家同阵营（倾向协作）", "enemy": "与玩家敌对"}.get(card.faction, "neutral")
-    中立提示 = "（你是中立第三方：不自动站队，按自己的动机目标权衡，可与任一方合作或翻脸）" if card.faction == "neutral" else ""
+    relation = {"ally": "same faction as the player (inclined to cooperate)",
+                "enemy": "hostile to the player"}.get(card.faction, "neutral")
+    neutral_hint = (" (you are a neutral third party: you don't automatically take sides; weigh things by your own motive, "
+                    "and you may cooperate with or turn on either side)") if card.faction == "neutral" else ""
     mates = _mates_brief(s, cid)
-    队友段 = f"\n# 你的同阵营队友（你们彼此知底，可据此协同）\n{mates}\n" if mates else ""
-    序 = _action_order_brief(s)
-    铁律段 = _tielv_block(card)
-    prompt = f"""你在一个跑团式交互游戏里扮演「{card.name}」。
+    mates_block = f"\n# Your Teammates (same faction; you know each other well and can coordinate)\n{mates}\n" if mates else ""
+    order = _action_order_brief(s)
+    directive_block = _directive_block(card)
+    prompt = f"""You are playing "{card.name}" in a tabletop-RPG-style interactive game.
 
-# world
+# World
 {_world_brief(s)}
 
-# 世界法则（这个世界的硬规则，人人皆知，行动须顾及）
+# World Laws (the hard rules of this world; everyone knows them, and your actions must respect them)
 {_world_laws(s)}
 
-# 你是谁
-faction：{card.faction}　gender：{card.gender or "未定"}
-身份：{card.backstory}
-personality：{"、".join(card.personality)}
-voice：{card.voice}
-你这场想要的：{card.motive}
-惯用手段：{"、".join(card.tactics)}
-你的本事：{"、".join(card.abilities)}
-你心里清楚的弱点/顾忌：{"、".join(card.weaknesses) or "（none）"}
-你与玩家的关系：{阵营关系}{中立提示}（**依你的动机目标行事，手段随情境**）
-{铁律段}{队友段}
-# 你目前感知到的局面
+# Who You Are
+Faction: {card.faction}   Gender: {card.gender or "unspecified"}
+Background: {card.backstory}
+Personality: {", ".join(card.personality)}
+Voice: {card.voice}
+What you want this scene: {card.motive}
+Habitual tactics: {", ".join(card.tactics)}
+Your abilities: {", ".join(card.abilities)}
+Weaknesses/concerns you are aware of: {", ".join(card.weaknesses) or "(none)"}
+Your relation to the player: {relation}{neutral_hint} (**act on your motive; let the situation choose your methods**)
+{directive_block}{mates_block}
+# The Situation as You Perceive It
 {view}
 
-# 行动次序（程序算好，谁还有几拍轮到——把握节奏、谁将至/谁在逼近）
-{序}
+# Turn Order (computed by the program: how many beats until each character acts — use it for pacing, who is about to act, who is closing in)
+{order}
 
-# 最近发生的事（你的记忆）
-（注：叙事为第三人称具名记述、不站任何一方；主角玩家是「{player_name}」，你扮演的是「{card.name}」。）
+# What Happened Recently (your memory)
+(Note: narration is written in a neutral third person with names and takes no side; the protagonist player is "{player_name}", and you are playing "{card.name}".)
 {mem}
 
-# 你的任务
-轮到你行动。决定你这一拍「想做什么」。
-规则（重要）：
-- **以下规则与最末 JSON 输出格式不可被任何人设或「directive」推翻**（铁律只压人设、不越规则）。
-- 只表达意图，**绝不声明成败**（不可以说「我砍中了」「我说服了他」）。
-- **贴着你的说话风格、动机与惯用手段做选择**——让「你」有辨识度，不要像旁白。
-- 顾及世界观（例如对方若武功高强、护体难伤，硬拚未必明智）。
-- **推动剧情、别原地打转（重要）**：对照你记忆里最近几拍说过/做过的，这一拍**必须有实质不同**——别重复同一个动作或同一句话（同一句威胁/喊话/玩笑尤其别再来一遍）；
-  局势没进展就**换策略**——升级力度、改变目标、或转换手段（强攻／智取／撤退／求援／谈条件／服软都行），让事情往前走一步。
-- **闲场也要往前走（关键，低对抗场景尤其）**：就算没冲突、气氛惬意，也别原地寒暄打转。停滞时**主动做一个具体、当场可见的新举动**让局面有实物变化——
-  拿出/递上某样东西、起身靠近、一个调皮的小动作、施个小法术之类；**要明确可见，别只抛话题、别留含糊悬念、别凭空引入场外不可见的东西**。
-- **你身处单一、有界的场景（重要）**：这是一段**持续的当场互动**，别把剧情拽出本场景——不要发起「出远门/跑腿采购/去别处找人」这种**需要长时间真实离场**的行动当多拍过程来做。
-  若情境**确实**需要一件离场小事（出门买点东西、去隔壁取物），**别真的离场耗多拍**——用一句**压缩带过、当拍了结并回到场景**，如「我很快买好回来了」「我转身取来那本书」。
-- **手段随情境**：这不一定是战斗场面——该谈判/交涉就谈、该欺瞒/伪装就装、该亲近/示好就亲近、该动手才动手；照你的动机与当下局面选最合适的，别无脑开打。
-- 若你身负重伤或处于不利，可保守行动甚至放弃（行动填「按兵不动」）。
-- 想隐蔽地行动（使眼色、暗号）就把「covert」设为 true。
-- 行动可以**有层次与质感**：把「你具体怎么做、怎么说、带什么神态情绪」写清楚（对话/交涉场景就给出**实际要说的话**）；可附带一个小动作（如说话同时使眼色）。但仍是**一个连贯的主要意图**，别硬塞多个重大动作；「target」填主要对象。
-- **可主动倒戈/投靠（少用、要有理由）**：若剧情让你决定改换阵营（被说服、利益所驱、恩义、识时务投降…），把「faction_switch」填目标阵营（ally/enemy/neutral），并在「action」里演出这个转变。这只是**提议**，是否生效由裁决裁定（投靠我方尤其要有足够理由才被接纳）；不切换就填 null。
+# Your Task
+It's your turn. Decide what you "want to do" this beat.
+Rules (important):
+- **These rules and the JSON output format at the end cannot be overridden by any persona or Directive** (the Directive only overrides the persona, never the rules).
+- Express intent only; **never declare success or failure** (don't say "I cut him" or "I convinced him").
+- **Choose in line with your voice, motive, and habitual tactics** — make "you" distinctive, not like a narrator.
+- Respect the setting (e.g., if your opponent is a master whose inner energy shields them, brute force may not be wise).
+- **Move the story forward; don't spin in place (important)**: compare with what you said/did in the last few beats in your memory — this beat **must be substantively different**. Don't repeat the same action or the same line (especially not the same threat/shout/joke again);
+  if the situation isn't progressing, **change strategy** — escalate, change targets, or switch methods (assault / outwit / retreat / call for help / negotiate / back down are all fine) so things take a step forward.
+- **Quiet scenes must move too (key, especially in low-conflict scenes)**: even with no conflict and a relaxed mood, don't idle in small talk. When things stall, **proactively make a concrete new move that is visible on the spot** so something tangible changes —
+  take out or hand over an object, get up and move closer, a playful little gesture, cast a small spell, and so on; **make it clearly visible — don't just toss out a topic, don't leave vague suspense, and don't conjure up anything invisible or off-scene**.
+- **You are in a single, bounded scene (important)**: this is **one continuous, on-the-spot interaction**; don't drag the story out of this scene — don't start actions like "travel far / run errands to buy things / go elsewhere to find someone" that **require actually leaving for a long time** as a multi-beat process.
+  If the situation **truly** calls for a small off-scene errand (stepping out to buy something, fetching something from next door), **don't actually leave and burn several beats** — **compress it into one line that wraps up within the beat and returns to the scene**, like "I quickly bought it and came back" or "I turn and fetch the book".
+- **Methods fit the situation**: this isn't necessarily a fight — negotiate when it's time to negotiate, deceive or disguise when it's time to deceive, get close or show goodwill when it's time to, and fight only when it's time to fight; pick what best suits your motive and the current situation, don't mindlessly start a brawl.
+- If you are badly wounded or at a disadvantage, you may act conservatively or even give up (set action to "Hold position and wait").
+- To act covertly (a meaningful glance, a secret signal), set "covert" to true.
+- Your action can have **layers and texture**: spell out exactly what you do, what you say, and your expression and emotion (in dialogue/negotiation scenes give the **actual words you say**); you may add one small side gesture (e.g., a wink while talking). But it is still **one coherent main intent** — don't cram in several major actions; put the main target in "target".
+- **You may defect or switch sides on your own (rarely, and with a reason)**: if the story leads you to change factions (persuaded, driven by interest, a debt of gratitude, surrendering while you still can…), set "faction_switch" to the target faction (ally/enemy/neutral) and act out the change in "action". This is only a **proposal**; adjudication decides whether it takes effect (joining the ally side especially needs good enough reason to be accepted). Otherwise set it to null.
+- Write everything in English.
 
-只输出 JSON：
-{{"action":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","target":"主要对象的角色名（在场者之一）或 null","covert":false,"faction_switch":null}}"""
-    out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
+Output JSON only:
+{{"action":"what you want to do — including how, your expression, and (if any) your actual words, in your own voice; may include one small side gesture","target":"name of the main target (one of the present characters) or null","covert":false,"faction_switch":null}}"""
+    out = await llm.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
     out.actor = cid
     return out
 
 
-# ───────────────── characters agent：反应意图 ─────────────────
-async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: str) -> Reaction:
+# ───────────────── character agent: reaction intent ─────────────────
+async def character_reaction(llm: LLMClient, s: Session, cid: str, incoming: str) -> Reaction:
     card = s.cards[cid]
     view = engine.build_view(s, cid)
-    性别txt = f"，{card.gender}" if card.gender else ""
+    gender_txt = f", {card.gender}" if card.gender else ""
     mates = _mates_brief(s, cid)
-    队友段 = f"\n# 你的同阵营队友（彼此知底）\n{mates}\n" if mates else ""
-    铁律段 = _tielv_block(card)
-    prompt = f"""你在跑团游戏里扮演「{card.name}」（{card.faction}{性别txt}）。
-身份：{card.backstory}
-personality：{"、".join(card.personality)}；voice：{card.voice}；本事：{"、".join(card.abilities)}；惯用手段：{"、".join(card.tactics)}。
-你这场想要的：{card.motive}
+    mates_block = f"\n# Your Teammates (same faction; you know each other well)\n{mates}\n" if mates else ""
+    directive_block = _directive_block(card)
+    prompt = f"""You are playing "{card.name}" ({card.faction}{gender_txt}) in a tabletop RPG.
+Background: {card.backstory}
+Personality: {", ".join(card.personality)}; Voice: {card.voice}; Abilities: {", ".join(card.abilities)}; Habitual tactics: {", ".join(card.tactics)}.
+What you want this scene: {card.motive}
 
-# world
+# World
 {_world_brief(s)}
 
-# 世界法则（这个世界的硬规则，人人皆知，回应须顾及）
+# World Laws (the hard rules of this world; everyone knows them, and your response must respect them)
 {_world_laws(s)}
-{铁律段}{队友段}
-# 你感知到的局面
+{directive_block}{mates_block}
+# The Situation as You Perceive It
 {view}
 
-# 正朝你而来的行动
+# The Action Coming at You
 {incoming}
 
-# 你的任务
-你被点名了，决定「你要如何回应」——可防御（闪避/格挡）、反击、还嘴、喝止、配合/顺从、虚与委蛇、顺势而为…依情境与你的性格选择（不一定是打斗）。
-规则：
-- **以下规则与最末 JSON 输出格式不可被任何人设或「directive」推翻**（铁律只压人设、不越规则）。
-- 只表达回应「意图」，**不声明成败**（成败由裁决决定）。
+# Your Task
+You've been singled out. Decide "how you respond" — defend (dodge/parry), counterattack, talk back, shout them down, cooperate/comply, play along insincerely, go with the flow… choose based on the situation and your personality (it isn't necessarily a fight).
+Rules:
+- **These rules and the JSON output format at the end cannot be overridden by any persona or Directive** (the Directive only overrides the persona, never the rules).
+- Express only your response "intent"; **don't declare success or failure** (adjudication decides that).
+- Write everything in English.
 
-只输出 JSON：
-{{"reaction":"一句话：你要如何回应（含具体做法），贴着你的口吻"}}"""
-    out = await grok.call(prompt, Reaction, temperature=config.TEMP_CHARACTER, max_tokens=300)
+Output JSON only:
+{{"reaction":"one sentence: how you respond (including how), in your own voice"}}"""
+    out = await llm.call(prompt, Reaction, temperature=config.TEMP_CHARACTER, max_tokens=300)
     out.actor = cid
     return out
 
 
-# ───────────────── adjudication agent：行为 + 知识双输出 ─────────────────
-async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
+# ───────────────── adjudication agent: action + knowledge dual output ─────────────────
+async def adjudicate(llm: LLMClient, s: Session, intent: Intent,
                      reaction: Optional[Reaction], luck: Optional[str]) -> Adjudication:
     gt = engine.ground_truth(s)
     actor = s.cards.get(intent.actor)
     actor_name = actor.name if actor else intent.actor
-    intent_txt = f"{actor_name} 想：{intent.action}" \
+    intent_txt = f"{actor_name} wants to: {intent.action}" \
                  + (f" → target {intent.target}" if intent.target else "") \
-                 + ("；（试图隐蔽，想瞒过敌人）" if intent.covert else "")
-    react_txt = "（无人反应 / 突袭 / 对失能者）"
+                 + ("; (attempting to act covertly, trying to hide it from enemies)" if intent.covert else "")
+    react_txt = "(no reaction / surprise attack / against an incapacitated target)"
     if reaction:
         rn = s.cards.get(reaction.actor)
-        react_txt = f"{rn.name if rn else reaction.actor} 回应：{reaction.reaction}"
-    luck_txt = luck or "（非争议，不掷运气）"
+        react_txt = f"{rn.name if rn else reaction.actor} responds: {reaction.reaction}"
+    luck_txt = luck or "(not contested; no luck roll)"
     present = _roster(s)
-    近期 = "\n".join(s.public_log[-4:]) or "（开场）"
-    序 = _action_order_brief(s)
+    recent = "\n".join(s.public_log[-4:]) or "(opening)"
+    order = _action_order_brief(s)
 
-    prompt = f"""你是跑团游戏里**中立的裁决者**。不偏袒任何一方，只依「地面真相」与「世界观法则」adjudication。
+    prompt = f"""You are the **neutral adjudicator** of a tabletop RPG. Favor no side; adjudicate solely by the "ground truth" and the "world laws".
 
-# 世界观法则（裁决必须严格遵守）
+# World Laws (adjudication must follow them strictly)
 {_world_laws(s)}
 
-# 地面真相（唯一依据，含角色的能力/defenses/weaknesses，与玩家看不到的 <gm> 秘密）
+# Ground Truth (your only source; includes characters' abilities/defenses/weaknesses and <gm> secrets the player cannot see)
 {gt}
 
-# 在场角色（用角色名指代）
+# Present Characters (refer to them by name)
 {present}
 
-# 本拍行动意图
+# This Beat's Action Intent
 {intent_txt}
 
-# 对方反应意图
+# The Other Side's Reaction Intent
 {react_txt}
 
-# 运气神谕（隐藏，仅你可见）
+# Luck Oracle (hidden, visible only to you)
 {luck_txt}
 
-# 最近几拍（判断是否在原地重复、该不该推进；现在是第 {s.turn} 拍）
-{近期}
+# Last Few Beats (to judge whether things are repeating in place and need to move forward; this is beat {s.turn})
+{recent}
 
-# 行动次序（程序算好，谁还有几拍轮到——判断推进、以及「援兵/追兵/火势」等逼近之事何时兑现的参考）
-{序}
+# Turn Order (computed by the program: how many beats until each character acts — a reference for pacing and for when approaching events like "reinforcements / pursuers / spreading fire" arrive)
+{order}
 
-# 裁决原则
-- **严守世界观法则与角色特质**：对有「defenses（如刀枪不入/横练护体）」者，寻常刀剑拳脚无效或大打折扣；
-  须循法则所列途径（更强内力、毒、火、点穴、出其不意攻其弱点、断其根基）才奏效。攻中对方「weaknesses」则效果显著。
-- 以地面真相为唯一依据。角色不能自行声明成败；若意图与状态/法则矛盾，判为不可能或受阻。
-- **很少给干净的成功**，多数是「success_with_cost」——那个代价就是让场面滚动的燃料。
-- **不容僵持、推动剧情（重要，所有模式通用）**：若最近几拍在原地重复（同样的动作/对话循环、谁也没真正前进），本拍就让局势**质变**，别再给「拉锯不动」的结果。
-  按本场情境从下面挑**最合适**的推进手段（战斗与非战斗并列，哪种贴合就用哪种，别一律往战斗/威胁上靠）：
-  · **有排队的威胁/危机** → 让开场埋下的悬置威胁随时间**兑现**（地面真相写「援兵数招内到」就让援兵到场）、环境危机升级逼人抉择（火势失控、退路将断、时限将尽）、或让反复无效者付出实质代价、削减其可选项；
-  · **没有威胁可兑现、只是闲场/日常/交涉间歇的停滞** → 促成一个**具体可见的转变**（某人做出新举动、关系前进一步、出现一件新实物或新情况），或用**时间跳跃**跳过死时间（见下「time_skip」）——**别硬塞战斗或凭空冒出威胁**。
-- **时间在流动**：地面真相里「即将到来／正在逼近」的事不可无限拖延，应随回合推进而兑现；没有这类悬置时，靠上面的非战斗手段同样把场景推向新阶段。
-- **压缩离场 / 时间跳跃（填「time_skip」字段，重要）**：当某行动意图本质是**离场小事**（「我很快买好回来」「出门取个东西」「等他半个时辰」），或场面陷入**只能靠跳过死时间才前进**的停滞时，
-  **别让角色真的离场耗多拍**——本拍当场了结：把该行动的结果照常落账（如社会事实「冰淇淋已买回」），并在「time_skip」写一句**时间压缩描述**（如「半个时辰后克洛伊拎着冰淇淋回来了」），characters**始终留在场**。非此情形「time_skip」务必留空。
-- 后果要「质的、会改变能力」：写「右臂中刀只能用左手」而非数值。
-- **交互不限战斗，同一套裁决适用所有模式**——用该模式合适的质性后果，别硬套伤势：
-  · 对话/交涉 → 信任/起疑/动摇/让步/把柄/承诺（多记为社会事实）
-  · 伪装/潜入 → 是否被识破或起疑、掩护是否成立、露出的身份线索（用隐蔽与感知分发）
-- 运气：bad_luck→下调一阶或加倒楣并发状况；good_luck→容许罕见干净成功或有利转折；even→照常。
-- **隐蔽行动（重要，本拍行动标注「试图隐蔽」时必办）**：先判**是否被识破**——结合对手感知/警觉、运气、行动难度。
-  · 被识破 → `detected` 填 true、`cover` 留空（真相暴露，照真意叙事、按需把暴露记进账本与感知分发）。
-  · 蒙混过关 → `detected` 填 false，并在 `cover` 写一句**旁观者会信以为真的伪装明面动作**（与真意不同、貌似无害或合理，如真意「使眼色递暗号」→cover「端起酒杯抿了一口」）。真意只让其同阵营懂（用 visibility/perception_map）。
-  · 非隐蔽行动：`detected`=false、`cover` 留空即可。
-- **复合行动**：一拍可能含「一个主要动作 + 附带小动作」（如攻击同时打暗号、后撤同时嘲讽）。请**逐部分裁决**，
-  并权衡「一心二用」的代价——通常主要动作打折、或附带动作不完全到位（正是「success_with_cost」的好题材）。
-  「target」只是主要反应对象；附带对象（如收暗号的队友）由你在感知分发处理，不必另收反应。
-- **社会/信息后果要落账**：对话、谈判、要挟若产生持久结果（招供、承诺、停火、结盟、情报揭露），
-  用 ledger_delta 记为社会事实（主体填 "scene"，类别填 "social_facts" 或 "intel"），带 gates 与可见性。
-- **瞬态状态设期限**：姿势晃动/被惊吓/火光蔓延/暂时失衡等短暂状态，add 时设「ttl」(1-3，几拍后自动消失)；
-  伤势/中毒/承诺/情绪转变/社会事实等持久状态留 null（不填）。
-- **升级即删旧、严禁堆栈近义状态**：当某状态恶化/被取代（火越烧越旺、伤势加重、恐惧升级、姿势改变），
-  **先把旧版本的关键字放进 remove，再在 add 写新版本**——绝不让账本同时存在多条描述同一件事的近义状态。
-  remove 关键字要**足够长、能唯一定位**旧条目（别填「恐惧」这种泛词会误删别的，要填「恐惧加剧，可能崩溃招供」这种独有片段）。
-- **同一事实只记一处**：招供/承诺/情报记成「social_facts」即可，**不要又拷贝一份到角色身心状况**。
-- 可见性只能填这四种之一：`public` / `gm` / `faction:faction` / `self:角色id`（不要自创其他值）。
-- perception_map：判断「谁察觉到这件事、察觉到多少」。昏迷者收不到；重伤分心可能漏看；背后动作可能未察觉。
-- **以角色为键的字段（perception_map/speed_updates/perception_updates/faction_changes）以及「subject」一律用上面「在场角色」里的角色名指代（程序会自动对应）。**
-- **faction_changes（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「faction_switch」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「faction_changes」(角色名→新阵营 ally/enemy/neutral)；**投靠「ally」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 gm_summary 点出这次转变，让叙事交代清楚。阵营只用 ally/enemy/neutral。
+# Adjudication Principles
+- **Strictly obey the world laws and character traits**: against someone with "defenses" (e.g. impervious to blades / iron-body training), ordinary blades and fists are useless or heavily reduced;
+  only the routes the laws list (stronger inner energy, poison, fire, pressure points, a surprise strike at their weakness, cutting off their foundation) work. Hitting an opponent's "weaknesses" has a marked effect.
+- The ground truth is your only source. Characters cannot declare their own success or failure; if the intent contradicts the state or the laws, rule it impossible or hindered.
+- **Rarely give a clean success**; most outcomes are "success_with_cost" — that cost is the fuel that keeps the scene rolling.
+- **No stalemates; move the story forward (important, applies to every mode)**: if the last few beats repeat in place (the same action/dialogue loop, nobody actually advancing), make the situation **change qualitatively** this beat — don't give another "tug of war, nothing moves" result.
+  Pick the **most fitting** lever for this scene from below (combat and non-combat options side by side — use whichever fits; don't default to combat or threats):
+  · **There is a queued threat/crisis** → let the threat planted at the start **come due** over time (if the ground truth says "reinforcements arrive within a few exchanges", have them arrive), escalate an environmental crisis to force a choice (fire out of control, escape route about to be cut off, time running out), or make someone who keeps failing pay a real cost and lose options;
+  · **No threat to cash in; just a stall in a quiet/everyday scene or a lull in negotiation** → bring about a **concrete, visible change** (someone makes a new move, a relationship takes a step, a new object or situation appears), or use a **time jump** to skip dead time (see "time_skip" below) — **don't force a fight or conjure up a threat out of nowhere**.
+- **Time is flowing**: things in the ground truth that are "about to arrive / closing in" cannot be stalled forever; they should come due as beats pass. When there is nothing pending like that, use the non-combat levers above to push the scene into a new phase just the same.
+- **Compressed exits / time jumps (fill the "time_skip" field, important)**: when an action intent is essentially a **small off-scene errand** ("I'll be right back with it", "stepping out to fetch something", "waiting for him for half an hour"), or the scene is stuck in a stall that **can only move by skipping dead time**,
+  **don't let the character actually leave and burn several beats** — resolve it on the spot this beat: record the action's result in the ledger as usual (e.g. a social fact "the ice cream has been bought"), and write a one-line **time-compression description** in "time_skip" (e.g. "Half an hour later Chloe comes back carrying ice cream"); characters **always stay in the scene**. Otherwise "time_skip" must be left empty.
+- Consequences should be "qualitative and change capabilities": write "stabbed in the right arm, can only use the left hand", not numbers.
+- **Interaction isn't limited to combat; the same adjudication applies to every mode** — use the qualitative consequences that fit the mode, don't force injuries:
+  · Dialogue/negotiation → trust/suspicion/wavering/concessions/leverage/promises (mostly recorded as social facts)
+  · Disguise/infiltration → whether they are seen through or arouse suspicion, whether the cover holds, identity clues revealed (use covert and the perception map)
+- Luck: bad_luck → drop one tier or add an unlucky complication; good_luck → allow a rare clean success or a favorable turn; even → as normal.
+- **Covert actions (important; mandatory when this beat's action is marked "attempting to act covertly")**: first decide **whether it is seen through** — considering the opponents' perception/alertness, luck, and the difficulty of the action.
+  · Seen through → set `detected` to true and leave `cover` empty (the truth is exposed; narrate the true intent, and record the exposure in the ledger and perception map as needed).
+  · Gets away with it → set `detected` to false and write in `cover` one line describing **the innocent-looking visible action bystanders will believe** (different from the true intent, seemingly harmless or reasonable; e.g. true intent "wink to pass a secret signal" → cover "raises his cup and takes a sip"). Only their own faction understands the true intent (use visibility/perception_map).
+  · Non-covert action: `detected`=false and `cover` empty.
+- **Compound actions**: a beat may contain "one main action + a small side action" (e.g. attacking while signaling, backing off while taunting). **Rule on each part**,
+  and weigh the cost of "doing two things at once" — usually the main action is weakened, or the side action doesn't fully land (great material for "success_with_cost").
+  "target" is only the main reacting party; side targets (e.g. a teammate receiving a signal) are handled by you in the perception map, no separate reaction needed.
+- **Record social/information consequences in the ledger**: if dialogue, negotiation, or coercion produces a lasting result (a confession, promise, truce, alliance, revealed intel),
+  record it in ledger_delta as a social fact (subject "scene", category "social_facts" or "intel"), with gates and visibility.
+- **Give transient states an expiry**: for short-lived states like swaying posture / being startled / spreading firelight / momentary loss of balance, set "ttl" (1-3, disappears automatically after a few beats) when adding;
+  for persistent states like injuries / poison / promises / emotional shifts / social facts, leave it null (omit it).
+- **Escalation replaces the old entry; never stack near-duplicate states**: when a state worsens or is superseded (the fire grows, a wound worsens, fear escalates, posture changes),
+  **first put the old version's keyword in remove, then write the new version in add** — never let the ledger hold several near-duplicate entries describing the same thing.
+  remove keywords must be **long enough to uniquely identify** the old entry (not a generic word like "fear", which would delete other entries; use a distinctive fragment like "fear intensifying, may break and confess").
+- **Record each fact in one place only**: a confession/promise/intel goes in "social_facts"; **don't also copy it into a character's conditions**.
+- Visibility must be exactly one of these four: `public` / `gm` / `faction:<faction>` / `self:<character name>` (don't invent other values).
+- perception_map: decide "who noticed this, and how much". Unconscious characters notice nothing; a badly wounded, distracted character may miss it; something behind someone's back may go unnoticed.
+- **Character-keyed fields (perception_map/speed_updates/perception_updates/faction_changes) and "subject" must always use the character names from "Present Characters" above (the program maps them automatically).**
+- **faction_changes (defecting/joining/being turned/surrendering)**: if a character proposes switching factions (see "faction_switch" in the action intent) or the story makes them change sides, approve it only **with enough narrative grounds**, by writing it into "faction_changes" (character name → new faction ally/enemy/neutral); **the bar for joining "ally" is high** (they must be persuaded / owe a debt of gratitude / have enough to gain; it can't just be announced out of nowhere). If approved, point out the change in gm_summary so the narration explains it. Factions are only ally/enemy/neutral.
+- Write all text values in English.
 
-# 输出（只输出 JSON）
+# Output (JSON only)
 {{
- "relevant_conditions": ["你查看到的、与本意图相关的状态/特质/laws，逐条列"],
- "rulings": ["每条 → 激活/阻止/改写/无关，一句话"],
+ "relevant_conditions": ["states/traits/laws you checked that bear on this intent, one per item"],
+ "rulings": ["each one → activates/blocks/rewrites/irrelevant, one sentence"],
  "feasibility": "impossible/hindered/feasible/needs_rewrite",
  "outcome": "success/success_with_cost/reversal",
  "ledger_delta": {{
-    "add": [{{"subject":"角色名或场景","category":"posture/conditions/status_effects/spatial/scene_facts/social_facts/intel","content":"质性事实","gates":"如何约束后续","visibility":"public","ttl":null}}],
-    "remove": ["要移除的状态的关键字"],
+    "add": [{{"subject":"character name or scene","category":"posture/conditions/status_effects/spatial/scene_facts/social_facts/intel","content":"qualitative fact","gates":"how it constrains what follows","visibility":"public","ttl":null}}],
+    "remove": ["keyword of a state to remove"],
     "modify": []
  }},
- "speed_updates": {{"角色名": 整数速度（重伤3/濒死2/昏迷0，正常不填）}},
- "perception_updates": {{"角色名": "如 蒙眼/昏迷/重伤分心"}},
- "faction_changes": {{"角色名": "ally/enemy/neutral（仅在批准倒戈/投靠/被策反时填，否则留空）"}},
- "perception_map": {{"角色名": "all / partial:只看到表象 / none"}},
+ "speed_updates": {{"character name": integer speed (seriously wounded 3 / dying 2 / unconscious 0; omit if normal)}},
+ "perception_updates": {{"character name": "e.g. blindfolded / unconscious / badly wounded and distracted"}},
+ "faction_changes": {{"character name": "ally/enemy/neutral (only when approving a defection/joining/being turned; otherwise leave empty)"}},
+ "perception_map": {{"character name": "all / partial:only saw the surface / none"}},
  "detected": false,
- "cover": "（仅当本拍行动试图隐蔽且未被识破时：旁观者信以为真的伪装明面动作；被识破或非隐蔽留空）",
- "time_skip": "（仅当压缩离场或须跳过死时间时：一句时间压缩描述，角色不离场、结果另落账；否则务必留空）",
- "gm_summary": "给叙事者的一句话地面真相（这拍实际发生了什么、收在什么未决张力上：威胁/疑点/抉择）"
+ "cover": "(only when this beat's action is covert and not seen through: the innocent-looking visible action bystanders believe; empty if seen through or not covert)",
+ "time_skip": "(only for a compressed exit or when dead time must be skipped: a one-line time-compression description; characters don't leave and results are recorded separately; otherwise must be empty)",
+ "gm_summary": "one sentence of ground truth for the narrator (what actually happened this beat, and the unresolved tension it ends on: a threat/doubt/choice)"
 }}"""
-    return await grok.call(prompt, Adjudication, temperature=config.TEMP_ADJUDICATOR, max_tokens=1200)
+    return await llm.call(prompt, Adjudication, temperature=config.TEMP_ADJUDICATOR, max_tokens=1200)
 
 
 # ───────────────── GM / narration agent ─────────────────
@@ -293,241 +298,245 @@ def _vis_label(v: str) -> str:
     if v == "public":
         return "public"
     if v.startswith("faction"):
-        return "仅该阵营知"
+        return "known only to that faction"
     if v.startswith("self"):
-        return "仅本人知"
-    return "机密gm，公开版绝不可写"
+        return "known only to that character"
+    return "GM secret, must never appear in the public version"
 
 
-async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Intent,
+async def narrate(llm: LLMClient, s: Session, adj: Adjudication, intent: Intent,
                   reaction: Optional[Reaction] = None) -> Narration:
     present = _roster(s)
     pcard = s.cards.get(engine.player_id(s))
     player_name = pcard.name if pcard else "player"
-    序 = _action_order_brief(s)
-    分发 = _perception_brief(s, adj.perception_map)
+    order = _action_order_brief(s)
+    perception = _perception_brief(s, adj.perception_map)
 
     actor = s.cards.get(intent.actor)
     actor_name = actor.name if actor else intent.actor
-    隐蔽蒙混 = bool(intent.covert and adj.cover and not adj.detected)
-    if 隐蔽蒙混:                       # 隐蔽未被识破：公开版只能写「cover」，真意只供其同阵营私密版
-        行动者行 = f"{actor_name} 明面上看起来：{adj.cover}" \
-                   + (f"（target {intent.target}）" if intent.target else "")
-        隐蔽行 = (f"\n# ⚠真意（机密：仅可用于 {actor_name} 同阵营角色的私密版，"
-                  f"**绝不可写进公开版**——公开版只准描述上面的「明面」）\n{actor_name} 实为：{intent.action}")
-    else:                            # 开放，或隐蔽已被识破：照真意写
-        行动者行 = f"{actor_name} 声明：{intent.action}" \
-                   + (f"（target {intent.target}）" if intent.target else "") \
-                   + ("（试图隐蔽，已被识破/暴露）" if intent.covert else "")
-        隐蔽行 = ""
-    反应行 = ""
+    covert_undetected = bool(intent.covert and adj.cover and not adj.detected)
+    if covert_undetected:              # covert and not seen through: the public version may only use the cover; the true intent is for their faction's private versions only
+        actor_line = f"{actor_name} appears to be: {adj.cover}" \
+                     + (f" (target {intent.target})" if intent.target else "")
+        covert_line = (f"\n# ⚠ True Intent (secret: may only be used in private versions for {actor_name}'s own faction; "
+                       f"**must never appear in the public version** — the public version may only describe the visible action above)\n{actor_name} is actually: {intent.action}")
+    else:                              # open, or covert but seen through: narrate the true intent
+        actor_line = f"{actor_name} declares: {intent.action}" \
+                     + (f" (target {intent.target})" if intent.target else "") \
+                     + (" (attempted covertly; seen through/exposed)" if intent.covert else "")
+        covert_line = ""
+    reaction_line = ""
     if reaction:
         rn = s.cards.get(reaction.actor)
-        反应行 = f"\n# 对方回应\n{rn.name if rn else reaction.actor}：{reaction.reaction}"
-    变更 = "\n".join(f"- {d.content}（{_vis_label(d.visibility)}）" for d in adj.ledger_delta.add) \
-           or "（本拍无添加状态）"
-    近期叙事 = "\n".join(s.public_log[-2:]) or "（开场）"
-    公开锚点 = "；".join(c.content for c in (s.ledger.scene.spatial + s.ledger.scene.scene_facts)
-                        if c.visibility == "public") or "（none）"
-    判定材料 = ""
+        reaction_line = f"\n# The Other Side's Response\n{rn.name if rn else reaction.actor}: {reaction.reaction}"
+    changes = "\n".join(f"- {d.content} ({_vis_label(d.visibility)})" for d in adj.ledger_delta.add) \
+        or "(no new states this beat)"
+    recent_narr = "\n".join(s.public_log[-2:]) or "(opening)"
+    anchors = "; ".join(c.content for c in (s.ledger.scene.spatial + s.ledger.scene.scene_facts)
+                        if c.visibility == "public") or "(none)"
+    ruling_material = ""
     if adj.relevant_conditions or adj.rulings:
-        判定材料 = ("\n# 本拍涉及的事实与判定（可据此充分描写，但别超出这些事实）\n"
-                   "relevant_conditions：" + "；".join(adj.relevant_conditions) +
-                   "\n判定：" + "；".join(adj.rulings))
-    推进段 = (f"\n# ⏭ 时间跳跃（本拍压缩跳过死时间，重要）\n{adj.time_skip}\n"
-              "（把跳过的这段时间**压成一句过场**带过，如「半个时辰后……」；别逐拍细写跳过的过程，落到跳跃后的此刻继续叙事。"
-              "角色并未离场，过场后他人依旧在这同一场景里。）") if adj.time_skip else ""
-    参与 = [intent.actor] + ([reaction.actor] if reaction else [])
-    口吻rows = []
-    for cid in 参与:
+        ruling_material = ("\n# Facts and Rulings Involved This Beat (you may describe them fully, but don't go beyond these facts)\n"
+                           "Relevant conditions: " + "; ".join(adj.relevant_conditions) +
+                           "\nRulings: " + "; ".join(adj.rulings))
+    time_skip_block = (f"\n# ⏭ Time Jump (this beat compresses and skips dead time, important)\n{adj.time_skip}\n"
+                       "(Compress the skipped stretch of time **into a single transitional line**, like \"Half an hour later…\"; don't narrate the skipped process beat by beat — land in the moment after the jump and continue from there. "
+                       "The characters have not left; after the transition everyone is still in this same scene.)") if adj.time_skip else ""
+    involved = [intent.actor] + ([reaction.actor] if reaction else [])
+    voice_rows = []
+    for cid in involved:
         c = s.cards.get(cid)
         if c:
-            口吻rows.append(f"- {c.name}：personality {('、'.join(c.personality)) or '—'}；口吻 {c.voice or '—'}")
-    口吻txt = ("\n# 登场者性格与口吻（让对白与神态贴着角色）\n" + "\n".join(口吻rows)) if 口吻rows else ""
+            voice_rows.append(f"- {c.name}: personality {(', '.join(c.personality)) or '—'}; voice {c.voice or '—'}")
+    voice_txt = ("\n# Personality and Voice of Those on Stage (keep dialogue and demeanor true to character)\n" + "\n".join(voice_rows)) if voice_rows else ""
 
-    prompt = f"""你是跑团游戏的 GM／叙事者。把这一拍写成**中立第三人称**、生动的散文。
+    prompt = f"""You are the GM/narrator of a tabletop RPG. Write this beat as vivid prose in a **neutral third person**.
 
-# 世界观基调（决定文字风格）
-{s.world.tone or "（中性）"}
+# World Tone (sets the writing style)
+{s.world.tone or "(neutral)"}
 
-# 在场角色（用角色名指代）
+# Present Characters (refer to them by name)
 {present}
 
-# 故事进展（玩家刚看到的；承接它，但**绝不可重述**已写过的事件或对白）
-{近期叙事}
-（**上面是已写过的上文、不是可套用的模板**：哪怕本拍与上一拍相似，也**绝不可逐字或整段照搬**这些文字——只写本拍新增的那点，用你自己的新措辞重写。）
+# Story So Far (what the player just saw; continue from it, but **never restate** events or dialogue already written)
+{recent_narr}
+(**The above is text already written, not a template to reuse**: even if this beat resembles the last one, **never copy it verbatim or wholesale** — write only what is new this beat, in fresh wording of your own.)
 
-# 场面背景锚点（仅供保持设定一致的**参考**——**不必每拍复述**；除非本拍真的动到它，否则别再描写这些既有环境/氛围）
-{公开锚点}
+# Scene Anchors (only a **reference** for keeping the setting consistent — **no need to restate every beat**; unless this beat actually touches them, don't describe this existing environment/atmosphere again)
+{anchors}
 
-# 行动节奏（程序算好，谁还有几拍轮到）
-{序}
-（用途：把握「谁快到、谁在逼近」——若有人还要好几拍才到（如赶来的援兵/追兵），可顺势铺垫其**逐渐逼近**的氛围（脚步声渐近、马蹄由远及近、尚在门外）；越近笔墨越紧。**但绝不可把「拍」这种游戏数字写进叙事**，只用自然笔法。）
+# Pacing (computed by the program: how many beats until each character acts)
+{order}
+(Purpose: sense "who is about to act, who is closing in" — if someone is still several beats away (e.g. reinforcements or pursuers on their way), you may build the atmosphere of their **gradual approach** (footsteps drawing near, hoofbeats growing louder, still outside the door); the closer they are, the tighter the writing. **But never put game numbers like "beats" into the narration**; use natural prose only.)
 
-# 本拍行动者
-{行动者行}{隐蔽行}{反应行}
-{口吻txt}
+# This Beat's Actor
+{actor_line}{covert_line}{reaction_line}
+{voice_txt}
 
-# 这一拍的地面真相（你知道全部）
+# This Beat's Ground Truth (you know everything)
 {adj.gm_summary}
-（outcome：{adj.outcome}；feasibility：{adj.feasibility}）
-{推进段}
+(outcome: {adj.outcome}; feasibility: {adj.feasibility})
+{time_skip_block}
 
-# 本拍实际造成的状态变更（忠实据此叙事，注意每条的可见性）
-{变更}
-{判定材料}
+# State Changes Actually Caused This Beat (narrate faithfully from these; mind each one's visibility)
+{changes}
+{ruling_material}
 
-# perception_map（谁察觉到多少——据此决定每人版本能写什么）
-{分发}
+# perception_map (who noticed how much — decides what each version may contain)
+{perception}
 
-# 叙事视角（最重要，先于一切）：中立第三人称、具名、不站任何一方
-- 公开叙事是**一份对所有人都成立的客观记述**——玩家与每个角色 agent 都会读到它并据此行动。**一律第三人称、直呼角色名**（含玩家角色「{player_name}」），**绝不用「你／你们」**，也绝不用「ally／敌方／友军／我们」这类**随立场变化**的词；否则不同立场的读者（尤其 NPC agent）会把指代弄反。
-- **用「身份／归属」（绝对）描述，不用「立场」（相对）**：写人物名字或其所属（「漕帮的汉子」「客栈伙计」「黑衣人」），不写「敌人／援兵／友军」。确需点出相对关系时**显式归到具名角色**——写「来接应刀疤的几名漕帮汉子」而非「援兵」，写「与阿青敌对的那人」而非「敌人」。
-- 私密版：给「察觉到更多」的某 NPC 补其独有感知，用该 NPC 名下的视角写（同样具名、不用「你」）。
+# Narrative Perspective (most important, above everything): neutral third person, named, taking no side
+- The public narration is **one objective account that holds true for everyone** — the player and every character agent read it and act on it. **Always use the third person and call characters by name** (including the player character "{player_name}"), **never "you"**, and never words that **shift with point of view** like "ally / enemy / friendly forces / we"; otherwise readers on different sides (especially NPC agents) will get the references backwards.
+- **Describe by identity/affiliation (absolute), not by side (relative)**: write a person's name or what they belong to ("the Canal Gang thug", "the inn's waiter", "the Man in Black"), not "the enemy / reinforcements / friendly forces". When a relative relationship really must be stated, **attribute it explicitly to a named character** — write "the few Canal Gang men coming to back up Scar", not "reinforcements"; write "the man opposing Qing", not "the enemy".
+- Private versions: add the unique perceptions of an NPC who "noticed more", written from that NPC's own perspective (likewise named, no "you").
 
-# 叙事原则
-- **只写本拍的新发展（最重要）**：承接上方「故事进展」，但**不可复述已写过的事件或对白**；同一角色别把类似的话再讲一次。
-  本拍若只是「继续拖延/僵持」，就只写这拍**添加**的细节（一个眼神、半步移动、一句新话），别重描整个场面。
-- **别复读环境与招牌（关键）**：**不要每拍重念同一批环境/氛围**（阳光、气味、远处声响等背景锚点）或**同一角色的招牌神态/口头禅**——它们写过一次就够；
-  把笔墨集中在本拍**真正变化的东西**上（见下方「本拍实际造成的状态变更」）。除非本拍真的动到某处环境，否则别再描写它。
-- **准确归属、忠于事实（同样关键）**：严格按上面「actor / 对方回应 / 状态变更」写「**谁**做了什么、**谁**被影响」。
-  不可张冠李戴（把某人的事写到另一人头上，如该是「阿青的绕背意图被识破」却写成「玩家无处藏身」）；
-  不可改写事件性质（如把「计谋被识破」写成「某人暴露躲藏」）。summary/变更没说的因果，不要自行发明。
-- **严禁发明新实体**：只能描写地面真相与在场角色中已存在的人、武器、items、环境（冷兵器酒馆不可出现枪、子弹，不可冒出不存在的人物）。
-- 贴世界观基调的语气写；后果是质的、会改写下一步的可能（战斗写伤势，交涉写人心向背，潜入写疑点）。
-- **这一拍必须收在一个未决的张力上**（威胁、疑点、抉择皆可），逼人想回应。
-- 节奏随基调与模式：打斗可急，交涉可缓可柔，不必都用战斗节奏。
-- 公开版：只写全场可见的客观经过；**标「机密gm」或「仅本人/仅该阵营知」的变更，绝不可写进公开版**。
-- 私密版：只为「察觉到更多」的角色加写他独有的感知（如我方才懂的暗号真意）；没有额外信息的角色可省略。
-- **长度随份量（时间弹性）**：平淡过场一两句带过即可；**有戏的关键拍要充分铺陈成一段**（约 3–6 句），调动上面的「相关状态与判定、角色性格口吻、场景锚点」，写出神态、动作、对白、情绪的质感——别每拍都干瘪。
-- **充分但不杜撰**：可以在已提供的事实上尽情演绎（感官、心理、语气、节奏），但**所有具体细节都必须源自上面给的材料**（地面真相/相关状态与判定/状态变更/角色口吻/场景锚点），不得发明新事实或新实体。
+# Narration Principles
+- **Write only this beat's new developments (most important)**: continue from "Story So Far" above, but **don't restate events or dialogue already written**; don't have the same character say something similar again.
+  If this beat is just "more stalling/standoff", write only the details **added** this beat (a glance, half a step, one new line), don't redescribe the whole scene.
+- **Don't recycle the environment or signature traits (key)**: **don't recite the same batch of environment/atmosphere every beat** (sunlight, smells, distant sounds and other scene anchors) or **the same character's signature expression/catchphrase** — once is enough;
+  focus on what **actually changed** this beat (see "State Changes Actually Caused This Beat" above). Unless this beat actually touches some part of the environment, don't describe it again.
+- **Attribute accurately and stay true to the facts (equally key)**: write strictly from the "actor / other side's response / state changes" above — **who** did what and **who** was affected.
+  Don't misattribute (putting one person's action on another, e.g. it should be "Qing's attempt to flank was seen through" but you write "the player has nowhere to hide");
+  don't change the nature of an event (e.g. turning "the scheme was seen through" into "someone's hiding place was exposed"). Don't invent causes and effects the summary/changes don't state.
+- **Never invent new entities**: describe only the people, weapons, items, and environment that already exist in the ground truth and among the present characters (a cold-weapons tavern cannot have guns or bullets, and characters who don't exist cannot appear).
+- Write in a voice that matches the world tone; consequences are qualitative and reshape what can happen next (combat → injuries, negotiation → shifting loyalties, infiltration → suspicion).
+- **This beat must end on an unresolved tension** (a threat, a doubt, or a choice), so someone wants to respond.
+- Pacing follows tone and mode: fights can be fast, negotiation slow and soft; not everything needs combat pacing.
+- Public version: only the objective events visible to everyone; **changes marked "GM secret" or "known only to that character / that faction" must never appear in the public version**.
+- Private versions: only for characters who "noticed more", adding their unique perceptions (e.g. the true meaning of a signal only their side understands); characters with no extra information can be omitted.
+- **Length scales with weight (time elasticity)**: a plain transition can be one or two sentences; **a key, dramatic beat should be developed into a full paragraph** (about 3–6 sentences), drawing on the "relevant conditions and rulings, character personality and voice, scene anchors" above to give texture to expressions, actions, dialogue, and emotion — don't make every beat dry.
+- **Rich but not made up**: you may freely elaborate on the facts provided (senses, inner thoughts, tone, rhythm), but **every concrete detail must come from the material above** (ground truth / relevant conditions and rulings / state changes / character voices / scene anchors); don't invent new facts or new entities.
+- Write all narration in English.
 
-只输出 JSON：
-{{"public":"全场可见的叙事","private":{{"角色名":"该角色独有的额外感知（可选，没有就不要这个 key）"}}}}"""
-    return await grok.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1000)
+Output JSON only:
+{{"public":"narration visible to everyone","private":{{"character name":"that character's unique extra perception (optional; omit the key if there is none)"}}}}"""
+    return await llm.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1000)
 
 
-# ───────────────── 滚动摘要：压缩旧叙事，保连贯（只管文气，不记事实） ─────────────────
-async def summarize_memory(grok: GrokClient, s: Session, cid: str,
+# ───────────────── rolling summary: compress old narration for continuity (story feel only, not facts) ─────────────────
+async def summarize_memory(llm: LLMClient, s: Session, cid: str,
                            old: str, evicted: list) -> str:
     name = s.cards[cid].name
     block = "\n".join(evicted)
-    prompt = f"""你在维护「{name}」的剧情记忆摘要，供其后续扮演保持连贯。
-把【既有摘要】与【接下来发生的数拍】融合成**一段精简、连贯**的摘要。
+    prompt = f"""You maintain the story-memory summary for "{name}", so they stay consistent when played later.
+Merge [Existing Summary] and [Beats That Followed] into **one concise, coherent** summary.
 
-# 既有摘要
-{old or "（none，这是第一次压缩）"}
+# Existing Summary
+{old or "(none; this is the first compression)"}
 
-# 新发生的数拍（需并入摘要，之后不再逐字保留）
+# New Beats (to be folded into the summary; they won't be kept verbatim afterward)
 {block}
 
-# 要求
-- 以「{name}」的视角与已知来写，保留：剧情走向、与各方的关系/恩怨变化、情绪起伏、未解的张力与悬念。
-- **不要记录精确状态数据**（谁伤在哪、谁站哪、确切承诺——那些另有账本）；你只负责「故事感」与连贯。
-- 精简，约 120 字内，一段话。
+# Requirements
+- Write from "{name}"'s perspective and knowledge, keeping: the direction of the plot, changes in relationships/grudges with each party, emotional ups and downs, unresolved tensions and suspense.
+- **Don't record precise state data** (who is wounded where, who stands where, exact promises — those live in the ledger); you are only responsible for "story feel" and continuity.
+- Concise: one paragraph, about 80 words or fewer.
+- Write in English.
 
-只输出 JSON：{{"summary":"..."}}"""
-    out = await grok.call(prompt, Summary, temperature=0.4, max_tokens=400)
+Output JSON only: {{"summary":"..."}}"""
+    out = await llm.call(prompt, Summary, temperature=0.4, max_tokens=400)
     return out.summary
 
 
-# ───────────────── 账本整理：合并近义条目、清冗余（不改变事实） ─────────────────
-async def consolidate_conditions(grok: GrokClient, s: Session, label: str,
+# ───────────────── ledger consolidation: merge near-duplicate entries, clear redundancy (facts unchanged) ─────────────────
+async def consolidate_conditions(llm: LLMClient, s: Session, label: str,
                                  conds: list) -> list:
-    """把一份条目清单里描述同一件事的近义条目合并成单一条目。返回整理后的 Condition 清单。"""
-    lines = "\n".join(f"- {c.content}｜gates:{c.gates}｜{c.visibility}" for c in conds)
-    prompt = f"""你在整理跑团游戏的状态账本「{label}」，移除冗余，但**不改变事实**。
+    """Merge near-duplicate entries describing the same thing in a list into a single entry. Returns the cleaned Condition list."""
+    lines = "\n".join(f"- {c.content} | gates: {c.gates} | {c.visibility}" for c in conds)
+    prompt = f"""You are tidying the "{label}" section of a tabletop RPG's state ledger: remove redundancy, but **do not change the facts**.
 
-下列条目可能有多条描述同一件事的近义条目（例如反复出现「先还债再谈」）。请：
-- 把描述同一件事的近义条目**合并成单一精简条目**；
-- 移除已被取代或互相矛盾的旧条目；
-- 保留彼此**真正不同**的事实，别把不同的事压成一条；
-- 保留每条的 gates 与可见性；**不要添加**原本没有的事实。
+The entries below may include several near-duplicates describing the same thing (e.g. "pay the debt first, then we talk" appearing again and again). Please:
+- **Merge** near-duplicate entries that describe the same thing **into a single concise entry**;
+- Remove old entries that have been superseded or contradict each other;
+- Keep facts that are **genuinely different**; don't squash different things into one entry;
+- Keep each entry's gates and visibility; **don't add** facts that weren't there.
+- Write in English.
 
-目前清单：
+Current list:
 {lines}
 
-只输出 JSON：{{"conditions":[{{"content":"精简事实","gates":"如何约束后续","visibility":"public"}}]}}"""
-    out = await grok.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=900)
-    return [Condition(content=c.content, gates=c.gates, visibility=c.visibility, source="整理")
+Output JSON only: {{"conditions":[{{"content":"concise fact","gates":"how it constrains what follows","visibility":"public"}}]}}"""
+    out = await llm.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=900)
+    return [Condition(content=c.content, gates=c.gates, visibility=c.visibility, source="consolidated")
             for c in out.conditions]
 
 
-# ───────────────── 编剧 agent：与用户协作设计剧本（区块式编辑） ─────────────────
+# ───────────────── author agent: co-design a scenario with the user (block-based editing) ─────────────────
 def _scenario_brief(sc: Scenario) -> str:
     w, L = sc.world, sc.ledger
     lines = [
-        f"world：tone={w.tone or '（空）'}｜laws {len(w.laws)} 条｜background{'已写' if w.background else '（空）'}",
-        f"scene：location={sc.scene.location or '（空）'}｜hook{'已写' if sc.scene.hook else '（空）'}｜present={sc.scene.present or '（空）'}",
+        f"world: tone={w.tone or '(empty)'} | {len(w.laws)} laws | background {'written' if w.background else '(empty)'}",
+        f"scene: location={sc.scene.location or '(empty)'} | hook {'written' if sc.scene.hook else '(empty)'} | present={sc.scene.present or '(empty)'}",
     ]
     if sc.cards:
         for cid, c in sc.cards.items():
-            lines.append(f"characters[{cid}]：{c.name}（{c.faction}/{c.gender or '?'}）abilities{len(c.abilities)}/防御{len(c.defenses)}/weaknesses{len(c.weaknesses)}")
+            lines.append(f"characters[{cid}]: {c.name} ({c.faction}/{c.gender or '?'}) abilities {len(c.abilities)} / defenses {len(c.defenses)} / weaknesses {len(c.weaknesses)}")
     else:
-        lines.append("characters：（尚无）")
-    lines.append(f"初始局面：已配置角色 {len(L.characters)}｜spatial{len(L.scene.spatial)}｜scene_facts{len(L.scene.scene_facts)}｜social_facts{len(L.scene.social_facts)}")
+        lines.append("characters: (none yet)")
+    lines.append(f"initial state: {len(L.characters)} characters configured | spatial {len(L.scene.spatial)} | scene_facts {len(L.scene.scene_facts)} | social_facts {len(L.scene.social_facts)}")
     return "\n".join(lines)
 
 
 def author_missing(sc: Scenario) -> list:
     m = []
     if not sc.world.tone:
-        m.append("世界观基调")
+        m.append("world tone")
     if not sc.scene.location:
-        m.append("场景地点")
+        m.append("scene location")
     if not sc.scene.hook:
-        m.append("开场钩子")
+        m.append("opening hook")
     if not any(c.controller == "player" for c in sc.cards.values()):
-        m.append("玩家角色")
+        m.append("player character")
     if not any(c.faction == "enemy" for c in sc.cards.values()):
-        m.append("至少一个敌人")
+        m.append("at least one enemy")
     if not sc.ledger.characters:
-        m.append("初始局面（姿势/速度/gauge）")
+        m.append("initial state (posture/speed/gauge)")
     return m
 
 
-async def author_turn(grok: GrokClient, sc: Scenario, history: list, user_msg: str) -> AuthorReply:
+async def author_turn(llm: LLMClient, sc: Scenario, history: list, user_msg: str) -> AuthorReply:
     brief = _scenario_brief(sc)
-    缺 = "、".join(author_missing(sc)) or "（基本要件看来已齐）"
-    hist = "\n".join(f"{r}：{t}" for r, t in history[-6:]) or "（刚开始）"
-    在场ids = "、".join(sc.scene.present) or "（尚无）"
-    prompt = f"""你是跑团游戏的「编剧」，与用户协作设计一份剧本。你要主动提案、填入具体草稿，而非只问空泛问题。
+    missing = ", ".join(author_missing(sc)) or "(the essentials look complete)"
+    hist = "\n".join(f"{r}: {t}" for r, t in history[-6:]) or "(just started)"
+    present_ids = ", ".join(sc.scene.present) or "(none yet)"
+    prompt = f"""You are the "Writer" of a tabletop RPG, co-designing a scenario with the user. Proactively propose ideas and fill in concrete drafts rather than only asking vague questions.
 
-# 编剧守则（决定品质）
-- 角色卡双用：演戏栏（personality/voice/motive/tactics）＋裁决栏（abilities/defenses/weaknesses）；务必补上「gender」与外貌年龄（写进身份背景），避免被脑补弄错。
-- **把关键弱点设成秘密**：放在角色卡「weaknesses」，并可在会变层用 visibility=gm 埋线索；别让玩家开局就知道（可被游戏中发现利用）。
-- world「laws」要能**影响裁决**（例：某类高手刀枪不入、轻功可飞檐走壁、内伤难愈）。
-- **埋钩子与张力**：开场 hook 要逼玩家立刻回应；用场景事实/社会事实提供筹码与变量（债务、人质、恩怨、出口封死）。
-- 会变层初始化：每个在场角色的「posture、speed(玩家7/常5/快6/负伤4)、perception」；必要时设「初始行动值」做先机（埋伏者高）；空间关系与场景事实；social_facts。
-- 可见性只用：public / gm / faction:faction / self:角色id。
-- **阵营只用「ally」「enemy」「neutral」三选一**（玩家与队友＝ally，对手＝enemy，掮客/线人/旁观者等第三方＝neutral；引擎据此判敌我，不可自创其他值）。阵营可在游玩中由角色倒戈/被策反而改变，你只需设好初始阵营。
-- characters id 用简短英文（如 player/aqing/scar）；玩家角色的「controller」填「player」，其余填「agent」。
-- abilities/defenses/弱点一律用**质性描述**，**不要写数值**（写「旧伤复发时使不上力」而非「gauge-2」）。
+# Writer's Guidelines (these determine quality)
+- Character cards serve two purposes: role-play fields (personality/voice/motive/tactics) + adjudication fields (abilities/defenses/weaknesses); always fill in "gender" and appearance/age (write them into backstory) so nothing gets guessed wrong.
+- **Make key weaknesses secret**: put them in the card's "weaknesses", and optionally plant clues in the ledger with visibility=gm; don't let the player know at the start (they can be discovered and exploited in play).
+- World "laws" must be able to **affect adjudication** (e.g. certain masters are impervious to blades, lightness skill lets you run up walls, internal injuries heal slowly).
+- **Plant hooks and tension**: the opening hook must force the player to respond immediately; use scene facts/social facts to provide stakes and variables (a debt, a hostage, a grudge, the exits sealed).
+- Ledger initialization: each present character's "posture, speed (player 7 / normal 5 / fast 6 / wounded 4), perception"; set an initial gauge when needed for initiative (ambushers start high); spatial relationships and scene facts; social_facts.
+- Visibility only: public / gm / faction:<faction> / self:<character id>.
+- **Faction must be exactly one of "ally", "enemy", "neutral"** (player and teammates = ally, opponents = enemy, brokers/informants/bystanders and other third parties = neutral; the engine uses this to tell friend from foe, so never invent other values). Factions can change during play when characters defect or are turned; you only set the starting faction.
+- Character ids are short English (e.g. player/aqing/scar); the player character's "controller" is "player", all others "agent".
+- Abilities/defenses/weaknesses are always **qualitative descriptions**, **never numbers** (write "can't put strength into it when the old wound flares up", not "gauge-2").
+- Write all content in English.
 
-# 目前剧本状态
+# Current Scenario State
 {brief}
-在场角色 id：{在场ids}
+Present character ids: {present_ids}
 
-# 还缺/待决
-{缺}
+# Still Missing / Undecided
+{missing}
 
-# 最近对话
+# Recent Conversation
 {hist}
 
-# 用户这句话
+# The User's Message
 {user_msg}
 
-# 你的任务（重要）
-**优先回应用户的明确要求**：若要求关于某个角色（名字/personality/abilities/weaknesses/秘密/外貌），就**更新该角色的 char block**（角色卡是剧本内核，别一直延后到「待补」）。没有特别指向时，挑「还缺/待决」中最关键的一项补上（通常是还没建的角色卡）。
-理解用户意图，**本回合只更新一个区块**：
-- block="world" → 填 world（World：tone/background/laws）
-- block="scene" → 填 scene（Scene：id/location/hook/present）
-- block="char" → 填 char_id 与 char（一张完整角色卡）
-- block="ledger" → 填 ledger（完整初始会变层；**沿用已有的，再加新的**，别漏掉已配置的角色）
-- block="none" → 纯提问或建议，不更新
-把对应区块的字段**完整填好**，其余区块字段留 null。reply 简短说明你做了什么或要问什么并引导下一步。
-**保留既有内容（重要）**：编辑某区块时只动用户要求改的部分，该区块**其他既有字段要照原样一并带上**（例如只改世界法则时，tone/背景要原样返回，别留空）。系统把空栏视为「不更动」，故不必怕，但能带就带；ledger 的角色字典只会「更新你给的、保留你没给的」。
-missing 列出还缺的关键部分；当「世界观基调+scene+hook+player+至少一敌+基本初始局面」齐备时 done=true。
+# Your Task (important)
+**Prioritize the user's explicit request**: if it is about a character (name/personality/abilities/weaknesses/secrets/appearance), **update that character's char block** (character cards are the core of a scenario; don't keep postponing them as "to do"). With no specific direction, pick the most critical item from "Still Missing / Undecided" (usually a character card not yet created).
+Understand the user's intent and **update only one block this turn**:
+- block="world" → fill world (World: tone/background/laws)
+- block="scene" → fill scene (Scene: id/location/hook/present)
+- block="char" → fill char_id and char (one complete character card)
+- block="ledger" → fill ledger (the complete initial ledger; **keep what's there and add the new**, don't drop already-configured characters)
+- block="none" → just a question or suggestion, no update
+Fill the corresponding block's fields **completely** and leave the other blocks' fields null. In reply, briefly say what you did or what you're asking, and guide the next step.
+**Preserve existing content (important)**: when editing a block, change only what the user asked for, and **carry the block's other existing fields along unchanged** (e.g. when only changing the world laws, return tone/background as they were, don't leave them empty). The system treats empty fields as "unchanged", so there's no harm, but include them when you can; the ledger's character dict only "updates what you give and keeps what you don't".
+In missing, list the key parts still missing; set done=true once "world tone + scene + hook + player + at least one enemy + basic initial state" are all in place.
 
-只输出 JSON（依 schema；未更新的区块字段填 null）。"""
-    return await grok.call(prompt, AuthorReply, temperature=0.7, max_tokens=2500)
+Output JSON only (following the schema; fields of blocks you didn't update are null)."""
+    return await llm.call(prompt, AuthorReply, temperature=0.7, max_tokens=2500)

@@ -1,7 +1,8 @@
-"""characters agent 的 prompt 拼装（纯逻辑、离线）：法则喂入 + 扮演铁律注入 + reaction 人设补齐。
+"""Prompt assembly for the character agents (pure logic, offline): world laws fed in + directive injection + reaction persona filled in.
 
-用「捕获式假 grok」——不联网的 GrokClient 替身，记下传入的 prompt 供断言（grok 是显式参数，
-直接传假对象、无需 monkeypatch）。只测「程序怎么拼 prompt」，不测「LLM 拼完听不听话」（那走 live）。
+Uses a "capturing fake LLM" — an offline LLMClient stand-in that records the prompt it receives for assertions (the llm is
+an explicit parameter, so the fake is passed directly, no monkeypatch needed). Only tests "how the program builds the prompt",
+not "whether the LLM obeys it" (that's for live runs).
 """
 import asyncio
 from backend import agents
@@ -9,19 +10,19 @@ from backend.models import Intent, Adjudication
 from backend.scene import new_tavern_session
 
 
-class CapturingGrok:
-    """假 grok：不联网，把传入的 prompt 记到 last_prompt，返回一个合法对象。"""
+class CapturingLLM:
+    """Fake LLM: offline; records the incoming prompt in last_prompt and returns a valid object."""
     def __init__(self):
         self.last_prompt = None
 
     async def call(self, prompt, schema, **kw):
         self.last_prompt = prompt
         if schema.__name__ == "Intent":
-            return schema(action="按兵不动")
+            return schema(action="Hold position and wait")
         if schema.__name__ == "Reaction":
-            return schema(reaction="硬抗")
+            return schema(reaction="Brace and take the hit")
         if schema.__name__ == "Narration":
-            return schema(public="（占位叙事）")
+            return schema(public="(placeholder narration)")
         return schema()
 
     async def close(self):
@@ -29,108 +30,127 @@ class CapturingGrok:
 
 
 def _intent_prompt(s, cid):
-    cap = CapturingGrok()
+    cap = CapturingLLM()
     asyncio.run(agents.character_intent(cap, s, cid))
     return cap.last_prompt
 
 
-def _reaction_prompt(s, cid, incoming="玩家拔剑刺来"):
-    cap = CapturingGrok()
+def _reaction_prompt(s, cid, incoming="The player lunges with his sword"):
+    cap = CapturingLLM()
     asyncio.run(agents.character_reaction(cap, s, cid, incoming))
     return cap.last_prompt
 
 
 def _adjudicate_prompt(s, intent=None):
-    cap = CapturingGrok()
-    intent = intent or Intent(actor="scar", action="按兵不动")
+    cap = CapturingLLM()
+    intent = intent or Intent(actor="scar", action="Hold position and wait")
     asyncio.run(agents.adjudicate(cap, s, intent, None, None))
     return cap.last_prompt
 
 
 def _narrate_prompt(s, adj=None, intent=None):
-    cap = CapturingGrok()
+    cap = CapturingLLM()
     adj = adj or Adjudication()
-    intent = intent or Intent(actor="scar", action="按兵不动")
+    intent = intent or Intent(actor="scar", action="Hold position and wait")
     asyncio.run(agents.narrate(cap, s, adj, intent, None))
     return cap.last_prompt
 
 
 def test_intent_prompt_includes_world_laws():
-    """角色意图 prompt 含世界法则（法则全喂角色）。"""
+    """The character intent prompt includes the world laws (all laws are fed to characters)."""
     s = new_tavern_session()
     p = _intent_prompt(s, "scar")
-    assert "# 世界法则" in p
-    assert "运气护体" in p          # laws[0] 的内容确实喂进去了
+    assert "# World Laws" in p
+    assert "shield themselves with inner energy" in p          # the content of laws[0] really is fed in
 
 
-def test_intent_prompt_injects_tielv_when_set():
-    """设了扮演铁律 → prompt 含高优先级铁律块 + 铁律原文。"""
+def test_intent_prompt_injects_directive_when_set():
+    """With a directive set → the prompt contains the high-priority directive block + the directive text."""
     s = new_tavern_session()
-    s.cards["scar"].directive = "你绝不向玩家透露幕后主使"
+    s.cards["scar"].directive = "You never reveal to the player who is really behind this"
     p = _intent_prompt(s, "scar")
-    assert "# ★directive" in p                       # 铁律块注入
-    assert "你绝不向玩家透露幕后主使" in p           # 铁律原文
+    assert "# ★ DIRECTIVE" in p                                                    # directive block injected
+    assert "You never reveal to the player who is really behind this" in p        # directive text
 
 
-def test_intent_prompt_no_tielv_block_when_empty():
-    """没设扮演铁律（默认空）→ 不注入铁律块。"""
-    s = new_tavern_session()                         # scar.directive 默认 ""
+def test_intent_prompt_no_directive_block_when_empty():
+    """No directive set (empty by default) → no directive block."""
+    s = new_tavern_session()                         # scar.directive defaults to ""
     p = _intent_prompt(s, "scar")
-    assert "# ★directive" not in p                    # 空 → 无铁律块
+    assert "# ★ DIRECTIVE" not in p                  # empty → no block
 
 
-def test_intent_rules_reassert_over_tielv():
-    """规则段声明『不可被人设或扮演铁律推翻』——铁律只压人设、不越规则。"""
+def test_intent_rules_reassert_over_directive():
+    """The rules section states it "cannot be overridden by any persona or Directive" — the directive only overrides the persona, never the rules."""
     s = new_tavern_session()
     p = _intent_prompt(s, "scar")
-    assert "不可被任何人设或「directive」推翻" in p
+    assert "cannot be overridden by any persona or Directive" in p
 
 
-def test_reaction_prompt_adds_laws_motive_identity_and_tielv():
-    """reaction prompt：补齐世界法则 + motive + backstory，且铁律也注入。"""
+def test_reaction_prompt_adds_laws_motive_identity_and_directive():
+    """Reaction prompt: world laws + motive + backstory filled in, and the directive is injected too."""
     s = new_tavern_session()
     scar = s.cards["scar"]
-    scar.directive = "你只说三字短句"
+    scar.directive = "You only speak in three-word sentences"
     p = _reaction_prompt(s, "scar")
-    assert "# 世界法则" in p and "运气护体" in p      # laws
-    assert scar.motive in p                         # 动机补齐
-    assert scar.backstory in p                         # 身份补齐
-    assert "# ★directive" in p and "你只说三字短句" in p  # 铁律注入
+    assert "# World Laws" in p and "shield themselves with inner energy" in p   # laws
+    assert scar.motive in p                         # motive filled in
+    assert scar.backstory in p                      # backstory filled in
+    assert "# ★ DIRECTIVE" in p and "You only speak in three-word sentences" in p  # directive injected
 
 
-# ───────────────── 非刻板/time_skip：意图侧场景边界 + 反重复升格 + 具体新举动 ─────────────────
-def test_intent_prompt_has_scene_bound_and_anti_repeat():
-    """意图 prompt：场景边界意识 + 压缩离场 + 反重复升格 + 主动具体新举动。"""
-    p = _intent_prompt(new_tavern_session(), "scar")
-    assert "单一、有界的场景" in p                       # 场景边界意识
-    assert "压缩带过" in p and "很快买好回来" in p        # 压缩离场（一句带过、不真离场）
-    assert "必须有实质不同" in p                          # 反重复升格
-    assert "具体、当场可见的新举动" in p                  # 闲场主动做具体新举动
+def test_prompts_require_english_output():
+    """Every agent prompt asks the model to write its output in English."""
+    s = new_tavern_session()
+    assert "Write everything in English." in _intent_prompt(s, "scar")
+    assert "Write everything in English." in _reaction_prompt(s, "scar")
+    assert "Write all text values in English." in _adjudicate_prompt(s)
+    assert "Write all narration in English." in _narrate_prompt(s)
 
 
-# ───────────────── time_skip：裁决菜单拓宽 + 时间跳跃输出 ─────────────────
-def test_adjudicate_prompt_has_nonfight_levers_and_advance_field():
-    """adjudication prompt：反僵持菜单含非战斗推进 + 压缩离场/时间跳跃 + 输出含「time_skip」字段。"""
+def test_adjudicate_prompt_enum_values_match_engine():
+    """The enum values the adjudicator is told to output are exactly the ones the engine compares against."""
     p = _adjudicate_prompt(new_tavern_session())
-    assert "战斗与非战斗并列" in p                        # 菜单混写、不硬分支
-    assert "具体可见的转变" in p                          # 非战斗推进手段
-    assert "压缩离场" in p and "时间跳跃" in p             # 压缩离场/跳过死时间
-    assert '"time_skip"' in p                                  # 输出 JSON 含推进键
+    assert '"feasibility": "impossible/hindered/feasible/needs_rewrite"' in p
+    assert '"outcome": "success/success_with_cost/reversal"' in p
+    assert "bad_luck" in p and "good_luck" in p and "even" in p
+    assert "ally/enemy/neutral" in p
+    assert '"subject":"character name or scene"' in p
 
 
-# ───────────────── time_skip + 反复读：叙事侧 ─────────────────
+# ───────────────── non-stereotyped/time_skip: scene bounds on the intent side + anti-repetition + concrete new moves ─────────────────
+def test_intent_prompt_has_scene_bound_and_anti_repeat():
+    """Intent prompt: awareness of scene bounds + compressed exits + escalated anti-repetition + proactive concrete new moves."""
+    p = _intent_prompt(new_tavern_session(), "scar")
+    assert "single, bounded scene" in p                                   # scene-bound awareness
+    assert "compress it into one line" in p and "quickly bought it and came back" in p   # compressed exit (one line, no real exit)
+    assert "must be substantively different" in p                         # escalated anti-repetition
+    assert "concrete new move that is visible on the spot" in p           # quiet scenes: proactive concrete new move
+
+
+# ───────────────── time_skip: broader adjudication menu + time-jump output ─────────────────
+def test_adjudicate_prompt_has_nonfight_levers_and_advance_field():
+    """Adjudication prompt: anti-stalemate menu includes non-combat levers + compressed exits/time jumps + output has a "time_skip" field."""
+    p = _adjudicate_prompt(new_tavern_session())
+    assert "combat and non-combat options side by side" in p          # mixed menu, no hard branch
+    assert "concrete, visible change" in p                             # non-combat lever
+    assert "Compressed exits" in p and "time jump" in p                # compressed exit / skipping dead time
+    assert '"time_skip"' in p                                          # output JSON has the time_skip key
+
+
+# ───────────────── time_skip + anti-recycling: narration side ─────────────────
 def test_narrate_prompt_anchor_downgrade_and_no_recycle():
-    """narration prompt：锚点降权（不必每拍复述）+ 反复读环境/招牌。"""
+    """Narration prompt: anchors downgraded (no need to restate every beat) + don't recycle environment/signature traits."""
     p = _narrate_prompt(new_tavern_session())
-    assert "不必每拍复述" in p                            # 锚点从「必念」降权为「参考」
-    assert "别复读环境与招牌" in p                        # 反复读氛围/招牌神态
-    assert "绝不可逐字或整段照搬" in p                    # 防回声：低新颖度拍也别照抄上文
+    assert "no need to restate every beat" in p                        # anchors downgraded from "must recite" to "reference"
+    assert "Don't recycle the environment or signature traits" in p    # no recycled atmosphere/signature expressions
+    assert "never copy it verbatim or wholesale" in p                  # anti-echo: even low-novelty beats don't copy earlier text
 
 
 def test_narrate_prompt_injects_timeskip_when_set():
-    """裁决填了推进 → narration prompt 含时间跳跃块 + 压缩描述原文；未填则无。"""
+    """Adjudication filled in time_skip → the narration prompt has the time-jump block + the compression text; otherwise none."""
     s = new_tavern_session()
-    with_jump = _narrate_prompt(s, Adjudication(time_skip="半个时辰后克洛伊拎着冰淇淋回来了"))
-    assert "时间跳跃" in with_jump and "半个时辰后克洛伊拎着冰淇淋回来了" in with_jump
-    no_jump = _narrate_prompt(s, Adjudication())           # 推进默认空
-    assert "⏭ 时间跳跃" not in no_jump                     # 空 → 不注入跳跃块
+    with_jump = _narrate_prompt(s, Adjudication(time_skip="Half an hour later Chloe comes back carrying ice cream"))
+    assert "⏭ Time Jump" in with_jump and "Half an hour later Chloe comes back carrying ice cream" in with_jump
+    no_jump = _narrate_prompt(s, Adjudication())           # time_skip defaults to empty
+    assert "⏭ Time Jump" not in no_jump                     # empty → no jump block

@@ -1,26 +1,26 @@
-"""pytest 共享夹具（fixtures）。
+"""Shared pytest fixtures.
 
-夹具 = 测试的「预备材料」：用 @pytest.fixture 定义，测试函数把夹具名写进参数，
-pytest 就会自动调用并注入。好处是每个测试拿到全新、隔离的对象，互不污染。
+A fixture is a test's "prepared material": defined with @pytest.fixture; a test function lists the fixture name
+as a parameter and pytest calls it and injects the result. Each test gets a fresh, isolated object, so tests don't contaminate each other.
 
-两类测试：
-- 纯逻辑（test_engine/flow/scenario）：用 `sess` 等内存夹具，**不连数据库**。
-- 集成（test_api）：经 TestClient 打真实端点（DB + JWT），用下面的 DB/auth 夹具。
+Two kinds of tests:
+- Pure logic (test_engine/flow/scenario): use in-memory fixtures like `sess`, **no database connection**.
+- Integration (test_api): hit real endpoints through TestClient (DB + JWT), using the DB/auth fixtures below.
 
-数据库策略（dev/prod 一致，测试也用 Postgres）：
-- 连一个**独立测试库 `trpg_test`**，绝不碰本地 `trpg` 的真实数据；conftest 首次自动建库 + 建表。
-- 每个 DB 测试前 `TRUNCATE ... RESTART IDENTITY` 清空，干净起点、自增 id 可预测、互不污染。
-- DB 夹具按需挂载：纯逻辑测试不依赖它们 → 不连 PG，本地照样能单独跑。
-- 本地需先 `docker compose up -d --wait` 起 PG（host 5433）；可用 TEST_DATABASE_URL 覆盖。
+Database strategy (dev/prod parity, tests use Postgres too):
+- Connect to a **separate test database `trpg_test`**, never touching real data in the local `trpg`; conftest creates the database + tables on first run.
+- Before each DB test, `TRUNCATE ... RESTART IDENTITY` empties everything: clean start, predictable auto-increment ids, no cross-contamination.
+- DB fixtures are attached on demand: pure-logic tests don't depend on them → no PG connection, so they still run on their own locally.
+- Locally, start PG first with `docker compose up -d --wait` (host 5433); override with TEST_DATABASE_URL.
 
-注意：离线测试从不真的呼叫 Grok（酒馆玩家速度最高、开局即停在玩家决策点），
-但 GrokClient 建构需要 LLM_API_KEY，故在此设一个 dummy，让建构不报错、也不连网。
+Note: offline tests never actually call the LLM (the tavern player is fastest, so a new game stops at the player's decision point immediately),
+but constructing LLMClient requires LLM_API_KEY, so a dummy is set here so construction doesn't fail and never touches the network.
 """
 import os
 
-os.environ.setdefault("LLM_API_KEY", "test-dummy-key")   # 必须在 import backend 之前
-os.environ.setdefault("ADMIN_PASSWORD", "")               # 不自动 seed admin，测试自造数据
-# 测试连独立库 trpg_test（默认本地 docker PG:5433），绝不污染本地 trpg 的真实存档
+os.environ.setdefault("LLM_API_KEY", "test-dummy-key")   # must happen before importing backend
+os.environ.setdefault("ADMIN_PASSWORD", "")               # don't auto-seed admin; tests create their own data
+# tests use the separate trpg_test database (default: local docker PG:5433) and never pollute real saves in the local trpg
 os.environ["DATABASE_URL"] = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg2://trpg:trpg@localhost:5433/trpg_test"
 )
@@ -38,19 +38,19 @@ from backend.db import engine, SessionLocal, Base
 from backend.auth import create_token, hash_password
 
 
-# ───────────────── 纯逻辑夹具（不连 DB）─────────────────
+# ───────────────── pure-logic fixtures (no DB) ─────────────────
 @pytest.fixture
 def sess():
-    """一份全新的「雨夜酒馆」Session（纯逻辑测试用），每个测试各拿一份、互相隔离。"""
+    """A fresh "rainy-night tavern" Session (for pure-logic tests); each test gets its own isolated copy."""
     return new_tavern_session()
 
 
-# ───────────────── 数据库基础设施 ─────────────────
+# ───────────────── database infrastructure ─────────────────
 @pytest.fixture(scope="session")
 def _db_ready():
-    """建测试库（若无）→ drop+create 全表，保证 schema 与当前模型一致。整轮测试只跑一次。"""
+    """Create the test database (if missing) → drop+create all tables so the schema matches the current models. Runs once per test session."""
     url = make_url(config.DATABASE_URL)
-    # 连一个一定存在的库（trpg）来 CREATE DATABASE trpg_test
+    # connect to a database that is guaranteed to exist (trpg) to CREATE DATABASE trpg_test
     maint = create_engine(url.set(database="trpg"), isolation_level="AUTOCOMMIT")
     with maint.connect() as c:
         exists = c.execute(
@@ -68,10 +68,10 @@ def _db_ready():
 
 @pytest.fixture
 def db(_db_ready):
-    """直连 DB 的 session，供测试做前置数据与断言。
+    """A direct DB session for tests to set up data and make assertions.
 
-    取用前先清空所有表（含重置自增 id），所以每个用到 DB 的测试都从干净状态起步。
-    纯逻辑测试不请求这个夹具 → 不连 PG。
+    All tables are emptied first (including resetting auto-increment ids), so every DB test starts from a clean state.
+    Pure-logic tests don't request this fixture → no PG connection.
     """
     with engine.begin() as c:
         tables = ", ".join(f'"{t.name}"' for t in Base.metadata.sorted_tables)
@@ -85,20 +85,20 @@ def db(_db_ready):
 
 @pytest.fixture
 def client():
-    """FastAPI 测试客户端：in-process 直接打路由，不需真的起服务器，也不打 Grok。
+    """FastAPI test client: hits routes in-process, no real server needed, and never calls the LLM.
 
-    刻意不进入 lifespan（不 `with`）→ 不触发 seed_admin，测试完全掌控自己的数据。
+    Deliberately doesn't enter the lifespan (no `with`) → seed_admin doesn't run, so tests fully control their own data.
     """
     return TestClient(app)
 
 
-# ───────────────── auth 夹具 ─────────────────
+# ───────────────── auth fixtures ─────────────────
 @pytest.fixture
 def make_user(db):
-    """工厂夹具：建用户并返回 (User, headers)。headers 带可用的 Bearer token。
+    """Factory fixture: create a user and return (User, headers). headers carry a working Bearer token.
 
-    直接造库 + 用 create_token 发 token（可设 admin），顺带真实走过 current_user 解码路径。
-    各夹具用不同 username，避免 unique 冲突。
+    Writes directly to the DB + issues the token with create_token (admin optional), which also exercises the real current_user decode path.
+    Each fixture uses a different username to avoid unique conflicts.
     """
     def _make(username="alice", password="pw123456", admin=False):
         u = mdb.User(username=username, password_hash=hash_password(password), is_admin=admin)
@@ -111,23 +111,23 @@ def make_user(db):
 
 @pytest.fixture
 def user_headers(make_user):
-    """一个普通用户的鉴权头。"""
+    """Auth headers for a regular user."""
     _, h = make_user("alice")
     return h
 
 
 @pytest.fixture
 def admin_headers(make_user):
-    """一个管理员的鉴权头。"""
+    """Auth headers for an admin."""
     _, h = make_user("admin", admin=True)
     return h
 
 
 @pytest.fixture
 def tavern_scenario(db, make_user):
-    """把 in-code 酒馆落地成一份 DB 剧本（已发布），返回 (sid, owner_headers)。
+    """Persist the in-code tavern as a (published) DB scenario; returns (sid, owner_headers).
 
-    用酒馆 session（玩家速度最高、开局停在玩家决策点）→ 开局不触发 Grok，集成测试可离线跑。
+    Uses the tavern session (player is fastest, the game stops at the player's decision point) → starting a game never calls the LLM, so integration tests run offline.
     """
     owner, headers = make_user("author")
     sc = scen.scenario_from_session(new_tavern_session(), "_pytest_tavern")

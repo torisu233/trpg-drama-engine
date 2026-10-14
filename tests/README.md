@@ -1,51 +1,49 @@
-# 测试策略（tests/）
+# Testing strategy (tests/)
 
-确定性、不打 Grok 的 pytest 套件。跑：`pip install -r requirements-dev.txt` 后 `pytest`。
+A deterministic pytest suite that never calls a real LLM. Run it with `pip install -r requirements-dev.txt`, then `pytest`.
 
-**数据库**：集成测试（`test_api`）连**真 Postgres**（dev/prod 一致），用独立测试库 `trpg_test`，
-绝不碰本地 `trpg` 的真实存档。本地先 `docker compose up -d --wait` 起 PG（host 5433）；CI 用
-Postgres service container（见 `.github/workflows/ci.yml` test job）。纯逻辑测试（engine/flow/scenario）
-**不连 DB**，单独跑无需 PG。可用 `TEST_DATABASE_URL` 覆盖连线。
+**Database**: the integration tests (`test_api`) run against a **real PostgreSQL** instance (same engine in dev and prod) using a dedicated test database, `trpg_test`, and never touch the real saves in the local `trpg` database. Locally, start Postgres first with `docker compose up -d --wait` (host port 5433); CI uses a Postgres service container (see the `test` job in `.github/workflows/ci.yml`). The pure-logic tests (engine / flow / scenario / LLM contract) **do not touch the database** and run without Postgres. Override the connection with `TEST_DATABASE_URL`.
 
-## 设计思路（一句话）
-**确定性的机器全测，不确定的 LLM 刻意不测。** 这条线是主动画的，不是测不动——所以
-70% 覆盖 = 纯逻辑 83–100% + LLM 层 ~13%（由 live 诊断脚本人工验，不进 CI）。
+## Philosophy in one line
+**Test the deterministic machinery thoroughly; deliberately don't unit-test what the LLM writes.** That line is drawn on purpose, not because the code is untestable. Prompt quality is checked by hand with live diagnostic scripts, outside CI. What *is* tested is the **boundary**: whatever schema-valid output the LLM returns, the engine must handle it correctly. Per-module coverage is reported by `pytest --cov` (enabled by default in `pyproject.toml`).
 
-## 测了什么 / 没测什么
-| 层 | 模块 | 测法 | 覆盖 |
-|---|---|---|---|
-| 确定性核心 | engine / models / scenario / game_store | 单元 + 集成 | 80–100% |
-| Web 管线 | main（密码闸）/ routes（非串流部分） | 集成（TestClient + 真 PG） | 73–100% |
-| 鉴权 | auth（JWT/bcrypt）/ 可见性 / 拥有权 | 集成（造用户发 token 打端点） | 69% |
-| LLM 代理 | agents.py（prompt） | **不测**，改 live 诊断 | 13% |
-| 编排 | flow.py（呼叫 Grok 的逐拍/串流） | 只测「每拍维护」，LLM 段用 monkeypatch 隔离 | 48% |
-| 前端 | Vue | 暂无（未来 Vitest） | — |
+## What is tested and what isn't
+| Layer | Modules | Approach |
+|---|---|---|
+| Deterministic core | engine / models / scenario / game_store | Unit + integration |
+| Web layer | main / routes (non-streaming parts) | Integration (TestClient + real Postgres) |
+| Auth | auth (JWT / bcrypt) / visibility / ownership | Integration (create users, issue tokens, hit endpoints) |
+| LLM boundary | flow + engine driven by a `FakeLLM` | Contract test: a full beat with adversarial but schema-valid LLM output |
+| LLM agents | agents.py (prompts) | **Not unit-tested**; checked with live diagnostics |
+| Orchestration | flow.py (per-beat / streaming calls to the LLM) | Per-beat maintenance tested, LLM calls isolated with `monkeypatch`; the full beat is covered by the contract test |
+| Frontend | Vue | None yet (Vitest planned) |
 
-## 文件分工
-- `conftest.py` — 夹具：`sess`（全新酒馆 Session，纯逻辑）/ `client`（TestClient，不进 lifespan→不 seed）/ `db`（直连 session，取用前 TRUNCATE 清库）/ `make_user`·`user_headers`·`admin_headers`（造用户发 JWT）/ `tavern_scenario`（落地一份已发布酒馆剧本，返回 sid+owner headers）。`_db_ready`（session 级）首次建测试库+建表。开头设 dummy `LLM_API_KEY`、空 `ADMIN_PASSWORD`、测试库 `DATABASE_URL`。
-- `test_engine.py` — 单元：行动条 / 迷雾 / 两轴（parametrize）/ delta / TTL / 结构化日志。
-- `test_flow.py` — 每拍维护：摘要压缩 / 账本整理（`monkeypatch` 换掉会打 Grok 的函数）。
-- `test_scenario.py` — 剧本来回无损 + 编剧合并（空栏不误清）。
-- `test_api.py` — 集成：health / 注册·登录·me（+ 校验）/ 剧本 CRUD·可见性·拥有权 / 开局快照（迷雾·面板·日志）/ 游戏拥有权（404 不泄露）/ 密码闸。覆盖 401/403/404 授权边界。
+## Files
+- `conftest.py`: fixtures. `sess` (a fresh tavern `Session`, pure logic) / `client` (TestClient, does not enter lifespan, so nothing is seeded) / `db` (direct DB session; truncates all tables before use) / `make_user`, `user_headers`, `admin_headers` (create users and issue JWTs) / `tavern_scenario` (stores a published tavern scenario and returns its id plus owner headers). The session-scoped `_db_ready` creates the test database and tables once. At import it sets a dummy `LLM_API_KEY`, an empty `ADMIN_PASSWORD`, and the test `DATABASE_URL`.
+- `test_engine.py`: unit tests for the action bar / fog of war / two-axis checks (parametrized) / ledger deltas / TTL / structured log.
+- `test_flow.py`: per-beat maintenance: summary compression and ledger consolidation (functions that would call the LLM are swapped out with `monkeypatch`).
+- `test_scenario.py`: lossless scenario round-trip, plus author-agent merging (empty fields never wipe existing content).
+- `test_llm_contract.py`: **LLM-boundary contract test.** A `FakeLLM` stands in for the real client (`backend/llm_client.py`) and returns output that is schema-valid but hostile: every character-keyed field uses character **names** instead of ids, `self:<name>` visibility, and keys for characters that don't exist. It drives a real beat end to end through `flow` (intent -> reaction -> adjudication -> apply -> narration -> distribution -> log) and asserts that nothing crashes or hangs, name-keyed deltas / speed / faction / perception / private narration land on the right character, `self:<name>` is normalized to `self:<id>`, and made-up keys are silently skipped. The fixture is deliberately not tavern-shaped (the player id is not `"player"`, ids differ from names) to force the name/id distinction. This test reproduces a class of production bugs (e.g. a `KeyError` when the LLM keyed perception by name) that the rest of the suite could not see.
+- `test_api.py`: integration: health / register, login, me (with validation) / change password / scenario CRUD, visibility, ownership, copy / new-game snapshot (fog, panels, log) / game ownership (404, no existence leak) / AI move suggestions / feedback chat. Covers the 401 / 403 / 404 authorization boundaries.
 
-## 用的技术 + 注意点
-- **fixtures**：靠参数名注入，别手动 import；默认 **function 级**（每测一份新的，互不污染），别贪快改 session 级。
-- **`@pytest.mark.parametrize`**：表格化多组输入，各自报告；中文值用 `ids=` 给可读名。
-- **`monkeypatch`**：打桩**测完自动还原**——改模块级状态（如 `config` 常数、`deps._grok`）必须用它（直接 `os.environ` 会漏给别的测试）。
-- **`TestClient`**：in-process 跑真实 app（中间件+路由），不起服务器。**不用 `with`**＝不进 lifespan，故测试时不触发 seed，自己掌控数据。
-- **DB 测试隔离**：独立测试库 + 每个 DB 测试取 `db` 夹具时 `TRUNCATE ... RESTART IDENTITY CASCADE`＝干净起点、自增 id 可预测。**不用** SQLite（与生产 PG 行为不一致），**不用**事务回滚（串流端点自开新连接，跨连接回滚不可靠）。
-- **鉴权夹具**：`make_user(admin=?)` 工厂直接造库+`create_token` 发 Bearer，可造普通/管理员；测试授权要覆盖 401（未登录）/403（无权）/404（不泄露存在性）三种边界。
-- **`is` 只用于 `True/False/None`**（单例身份比较），别用来比字符串/数字。
-- **随机**（`roll_luck`）不测结果、只测周围确定性分支。
-- 本项目的模块级共享状态（如 `deps._grok`）动了要还原（用 `monkeypatch`）。游戏已纯 DB、无内存缓存。
+## Techniques and gotchas
+- **Fixtures** are injected by parameter name; don't import them manually. They default to **function scope** (a fresh one per test, no cross-contamination); don't switch to session scope for speed.
+- **`@pytest.mark.parametrize`** turns several inputs into a table, each reported separately; use `ids=` to give cases readable names.
+- **`monkeypatch`** stubs are **reverted automatically after each test**. Use it for any module-level state (e.g. `config` constants or the cached LLM client in `deps`); setting `os.environ` directly leaks into other tests.
+- **`TestClient`** runs the real app in-process (middleware + routes) without starting a server. It is used **without `with`**, so lifespan never runs and nothing is seeded; tests own their data.
+- **DB isolation**: a dedicated test database, and every DB test that takes the `db` fixture starts with `TRUNCATE ... RESTART IDENTITY CASCADE`, giving a clean slate and predictable auto-increment ids. **No** SQLite (it behaves differently from production Postgres) and **no** transaction rollback (streaming endpoints open their own connections, and cross-connection rollback is unreliable).
+- **Auth fixtures**: the `make_user(admin=?)` factory writes the user directly and issues a Bearer token via `create_token`, for regular or admin users. Authorization tests must cover all three boundaries: 401 (not logged in), 403 (not allowed) and 404 (existence not leaked).
+- **Use `is` only for `True` / `False` / `None`** (singleton identity), never to compare strings or numbers.
+- **Randomness** (`roll_luck`): don't test the outcome; test the deterministic branches around it.
+- Module-level shared state (such as the LLM client cached in `deps`) must be restored after changes; use `monkeypatch`. Games are stored purely in the database, with no in-memory cache.
 
-## 维护工作流（频繁改项目时）
-1. 改码 → `pytest` → 红了吗？
-2. 红了只问一句：**「我是不是『故意』改了这个行为？」**
-   - 不是 → 真回归 → **改码**，测试别动。
-   - 是 → 旧期望过时 → **改测试期望**（和码放**同一个 commit**）。
-   - 行为没变却红 → 测试绑死了实作 → 改测试去验行为。
-3. **禁忌**：绝不为了变绿而删/弱化一条揭露真 bug 的测试。
-4. 新功能 → 同一次加新测试；改 snapshot 形状 → 改 `test_api` 断言；改 prompt → 不动 pytest（跑 live 诊断）；改剧本资料 → 不动测试（测试用 `scene.py` 夹具，与可玩剧本解耦）。
+## Maintenance workflow (when the project changes often)
+1. Change code -> `pytest` -> is anything red?
+2. If so, ask one question: **"Did I change this behavior on purpose?"**
+   - No -> it's a real regression -> **fix the code** and leave the test alone.
+   - Yes -> the old expectation is out of date -> **update the test** (in the **same commit** as the code).
+   - The behavior didn't change but the test is red -> the test is coupled to implementation details -> rewrite it to check behavior.
+3. **Never** delete or weaken a test that exposes a real bug just to get green.
+4. New feature -> add tests in the same change; snapshot shape changes -> update the `test_api` assertions; prompt changes -> no pytest changes (run the live diagnostics); scenario data changes -> no test changes (tests use the `scene.py` fixture, decoupled from playable scenarios).
 
-快捷：`pytest tests/test_engine.py`（单档）、`pytest -k fog`（按名）、`pytest -x`（首红即停）、`pytest --lf`（只重跑上次失败）。
+Shortcuts: `pytest tests/test_engine.py` (one file), `pytest -k fog` (by name), `pytest -x` (stop at first failure), `pytest --lf` (rerun last failures). Coverage is reported on every run (`addopts` in `pyproject.toml` enables `--cov=backend`).

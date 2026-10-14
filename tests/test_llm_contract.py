@@ -1,20 +1,21 @@
-"""边界契约测试：用「敌意但合法」的假 LLM 驱动真实的一整拍，守住 LLM↔引擎 的接缝。
+"""Boundary contract tests: drive a real, complete beat with a "hostile but valid" fake LLM to guard the LLM↔engine seam.
 
-为什么需要这层（见此前线上事故）：
-其余测试**从不真的呼叫 LLM**（conftest 注释），于是「LLM 吐出的东西和程序假设不一样」这
-一整类 bug 在套件里结构性不可见——它们全长在「自由格式 LLM 输出 ↔ 死板程序假设」的边界上：
-  · KeyError '凯尔'：LLM 拿**角色名**当感知分发的键，代码却 s.cards[name] 直接索引 → 崩。
-  · self:name visibility：LLM 写 self:<name>，代码假设 self:<id> → 自见状态失效。
-  · 虚构键：LLM 编出不存在的角色名当键 → 崩。
-  · player id≠"player"：靠写死 id 认玩家 → 认错人/卡死。
+Why this layer exists (see earlier production incidents):
+The other tests **never actually call the LLM** (see the conftest note), so the whole class of bugs where "what the LLM emits
+differs from what the program assumes" is structurally invisible to the suite — they all live on the boundary between
+free-form LLM output and rigid program assumptions:
+  · KeyError 'Kyle': the LLM used a **character name** as a perception-map key while the code indexed s.cards[name] directly → crash.
+  · self:name visibility: the LLM wrote self:<name>, the code assumed self:<id> → self-only states stopped working.
+  · Made-up keys: the LLM invented a non-existent character name as a key → crash.
+  · player id != "player": identifying the player by a hard-coded id → wrong character / hang.
 
-本文件不调辅助函数，而是把一个 `FakeGrok`（schema 合法、但**键一律用角色名**、含 self:name、
-含**虚构键**）接进 `flow`，跑完整的一拍（意图→reaction→adjudication→套用→narration→分发→log），断言：
-  (1) 不崩、不卡死；(2) 名字键的 delta/速度/faction/感知/私密叙事都落到了对应角色；
-  (3) self:name 归一化成 self:id；(4) 虚构键被静默跳过。
-夹具刻意是**非酒馆形状**：player id≠"player"、characters id≠名字，逼出名↔id 的区分。
+Rather than calling helpers, this file plugs a `FakeLLM` (schema-valid, but **always keyed by character name**, with self:name
+and **made-up keys**) into `flow` and runs a full beat (intent → reaction → adjudication → apply → narration → distribute → log), asserting:
+  (1) no crash, no hang; (2) name-keyed delta/speed/faction/perception/private narration all land on the right character;
+  (3) self:name is normalized to self:id; (4) made-up keys are silently skipped.
+The fixture is deliberately **not tavern-shaped**: player id != "player" and character ids != names, forcing the name↔id distinction.
 
-跑老代码（修复前）时本测试会崩（KeyError）——正是它该有的回归价值。
+Against the old (pre-fix) code this test crashes (KeyError) — exactly the regression value it should have.
 """
 import asyncio
 
@@ -26,77 +27,78 @@ from backend.models import (
 )
 
 
-# ───────────────── 敌意假 LLM ─────────────────
-class FakeGrok:
-    """冒充 GrokClient：按 schema 返回**合法但敌意**的输出（键全用角色名 + self:name + 虚构键）。
+# ───────────────── hostile fake LLM ─────────────────
+class FakeLLM:
+    """Stands in for LLMClient: returns **valid but hostile** output per schema (keys are all character names + self:name + made-up keys).
 
-    模拟 DeepSeek 的真实倾向：用角色名而非抽象 id 当各种字段的键。绝不联网。
+    Mimics DeepSeek's real tendency to use character names rather than abstract ids as keys everywhere. Never touches the network.
     """
     async def call(self, prompt, schema, temperature=0.7, max_tokens=2000, model=""):
         name = schema.__name__
         if name == "Intent":
-            # 敌方黑衣人挥刀逼近队友「阿大」——目标用**角色名**，引擎须在边界解析回 id
-            return Intent(action="挥刀逼近阿大，刀光直取其腕", target="阿大", covert=False)
+            # the enemy Man in Black closes in on teammate "Ah Da" — target given by **name**; the engine must resolve it to an id at the boundary
+            return Intent(action="Closes in on Ah Da, blade flashing straight at his wrist", target="Ah Da", covert=False)
         if name == "Reaction":
-            return Reaction(reaction="举起船桨横档当胸一格")
+            return Reaction(reaction="Raises the oar crosswise to block in front of his chest")
         if name == "Adjudication":
-            # 一切以角色为键的字段**全用角色名**，外加一个**虚构键**与 self:name visibility
+            # every character-keyed field uses **names**, plus a **made-up key** and a self:name visibility
             return Adjudication(
                 feasibility="feasible", outcome="success_with_cost",
-                relevant_conditions=["黑衣人快刀", "阿大举桨格挡"],
-                rulings=["快刀激活", "格挡改写为受创"],
+                relevant_conditions=["Man in Black's quick blade", "Ah Da blocks with the oar"],
+                rulings=["quick blade activates", "the block is rewritten as taking a hit"],
                 ledger_delta=LedgerDelta(add=[
-                    DeltaItem(subject="阿大", category="conditions", content="右臂被划伤",
-                              gates="使不上重劲", visibility="self:阿大"),   # self:name → 须归一化为 self:id
+                    DeltaItem(subject="Ah Da", category="conditions", content="cut on the right arm",
+                              gates="can't put full strength into it", visibility="self:Ah Da"),   # self:name → must normalize to self:id
                 ]),
-                speed_updates={"阿大": 3},               # 名字键
-                perception_updates={"阿大": "吃痛分心"},        # 名字键
-                faction_changes={"黑衣人": "neutral"},          # 名字键的倒戈
-                perception_map={"林无敌": "all", "查无此人": "none",   # ← 虚构键，老代码在此 KeyError
-                          "阿大": "partial", "黑衣人": "all"},
-                gm_summary="黑衣人一刀划伤阿大手臂，阿大格挡得险。",
+                speed_updates={"Ah Da": 3},                    # name key
+                perception_updates={"Ah Da": "distracted by pain"},  # name key
+                faction_changes={"Man in Black": "neutral"},    # name-keyed defection
+                perception_map={"Lin Wudi": "all", "Nobody": "none",   # ← made-up key; the old code KeyErrored here
+                                "Ah Da": "partial", "Man in Black": "all"},
+                gm_summary="The Man in Black cuts Ah Da's arm; Ah Da barely blocks.",
             )
         if name == "Narration":
             return Narration(
-                public="渡口湿冷，黑衣人欺身一刀，阿大举桨硬格，火星迸溅，腕上已见血痕。",
-                private={"阿大": "阿大只觉右臂一麻，握桨发虚。",   # 名字键
-                      "鬼影": "不存在角色的私密视角"},          # ← 虚构键，distribute 须跳过
+                public="The ferry landing is cold and damp. The Man in Black darts in with a slash; Ah Da braces the oar to block, sparks fly, and blood already marks his wrist.",
+                private={"Ah Da": "Ah Da feels his right arm go numb; his grip on the oar weakens.",   # name key
+                         "Ghost": "a private view for a character who doesn't exist"},          # ← made-up key; distribute must skip it
             )
         if name == "Summary":
-            return Summary(summary="（测试摘要）")
+            return Summary(summary="(test summary)")
         if name == "ConsolidateOut":
             return ConsolidateOut(conditions=[])
-        raise AssertionError(f"FakeGrok 未预期的 schema: {name}")
+        raise AssertionError(f"FakeLLM got an unexpected schema: {name}")
 
     async def close(self):
         pass
 
 
-# ───────────────── 非酒馆夹具：player id≠"player"、id≠名字 ─────────────────
+# ───────────────── non-tavern fixture: player id != "player", ids != names ─────────────────
 def _hostile_session() -> Session:
-    """三人局，刻意让形状与酒馆不同，逼出名↔id 的区分。
+    """Three characters, deliberately shaped unlike the tavern to force the name↔id distinction.
 
-    行动值精心设置（门槛20/玩家速7/常速5）：首拍只有 h3 达标→敌方先动一整拍；
-    其后 h1（player）达标→advance 恰好停在玩家决策点。于是 advance 精确只跑「一拍敌方」。
+    Gauges are set carefully (threshold 20 / player speed 7 / normal speed 5): on the first tick only h3 reaches the threshold →
+    the enemy takes one full beat; then h1 (player) reaches it → advance stops exactly at the player's decision point.
+    So advance runs exactly "one enemy beat".
     """
     cards = {
-        "h1": CharCard(name="林无敌", faction="ally", controller="player", gender="男",
-                       backstory="落魄剑客", abilities=["剑法精准"], weaknesses=["左肩旧伤"]),
-        "h2": CharCard(name="阿大", faction="ally", controller="agent", gender="男",
-                       abilities=["力气大"], weaknesses=["头脑简单"]),
-        "h3": CharCard(name="黑衣人", faction="enemy", controller="agent", gender="男",
-                       abilities=["漕帮快刀"], defenses=["横练护体"], weaknesses=["怕水"]),
+        "h1": CharCard(name="Lin Wudi", faction="ally", controller="player", gender="male",
+                       backstory="a down-and-out swordsman", abilities=["precise swordsmanship"], weaknesses=["old wound in the left shoulder"]),
+        "h2": CharCard(name="Ah Da", faction="ally", controller="agent", gender="male",
+                       abilities=["very strong"], weaknesses=["simple-minded"]),
+        "h3": CharCard(name="Man in Black", faction="enemy", controller="agent", gender="male",
+                       abilities=["Canal Gang quick blade"], defenses=["iron-body protection"], weaknesses=["afraid of water"]),
     }
     ledger = Ledger(characters={
-        "h1": CharLedger(posture="立于船头", speed=config.SPEED_PLAYER, gauge=6),
-        "h2": CharLedger(posture="持桨在侧", speed=config.SPEED_NORMAL, gauge=0),
-        "h3": CharLedger(posture="踏浪而来", speed=config.SPEED_NORMAL, gauge=15),
+        "h1": CharLedger(posture="standing at the bow", speed=config.SPEED_PLAYER, gauge=6),
+        "h2": CharLedger(posture="at his side holding an oar", speed=config.SPEED_NORMAL, gauge=0),
+        "h3": CharLedger(posture="striding across the waves", speed=config.SPEED_NORMAL, gauge=15),
     })
     return Session(
-        scene=Scene(id="hs", location="夜雾渡口", present=["h1", "h2", "h3"]),
+        scene=Scene(id="hs", location="a ferry landing in the night fog", present=["h1", "h2", "h3"]),
         cards=cards, ledger=ledger,
         memory={"h1": [], "h2": [], "h3": []},
-        public_log=["【scene】夜雾渡口"],
+        public_log=["[Scene] a ferry landing in the night fog"],
     )
 
 
@@ -104,99 +106,99 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-# ───────────────── 契约：完整一拍跑通敌意输出 ─────────────────
+# ───────────────── contract: a full beat survives hostile output ─────────────────
 def test_npc_beat_survives_name_keyed_and_fictional_llm_output():
-    """敌方一整拍：意图/reaction/adjudication/叙事全用角色名为键、含 self:name 与虚构键 →
-    不崩、不卡死，且所有名字键都落到对应角色，self:name 归一化，虚构键被跳过。"""
+    """A full enemy beat: intent/reaction/adjudication/narration all keyed by character name, with self:name and made-up keys →
+    no crash, no hang; every name key lands on the right character, self:name is normalized, made-up keys are skipped."""
     s = _hostile_session()
 
-    # 玩家靠「controller==player」识别，绝不是写死的 "player"
+    # the player is identified by controller=="player", never a hard-coded "player"
     assert engine.player_id(s) == "h1"
 
-    # 跑到玩家决策点（按行动值设定，恰好只跑一拍敌方）——不抛异常即证明边界全程未崩
-    _run(flow.advance(FakeGrok(), s))
+    # run to the player's decision point (by the gauge setup, exactly one enemy beat) — no exception proves the boundary held
+    _run(flow.advance(FakeLLM(), s))
 
-    # 停在玩家行动，未卡死
+    # stopped at the player's action, no hang
     assert s.pending and s.pending["type"] == "player_action"
 
     h2 = s.ledger.characters["h2"]
-    # 名字键的 ledger_delta（subject="阿大"）落到了 h2
-    assert any("右臂被划伤" in c.content for c in h2.conditions), "名字键的 delta 未落到对应角色"
-    # self:name → self:id 归一化（修复前会是 self:阿大，自见判定对不上）
-    伤 = next(c for c in h2.conditions if "右臂被划伤" in c.content)
-    assert 伤.visibility == "self:h2", f"self:name 未归一化为 self:id：{伤.visibility}"
-    assert engine._visible(伤, "h2", "ally") is True      # 本人可见
-    assert engine._visible(伤, "h1", "ally") is False     # 他人不可见
+    # name-keyed ledger_delta (subject="Ah Da") landed on h2
+    assert any("cut on the right arm" in c.content for c in h2.conditions), "name-keyed delta did not land on the right character"
+    # self:name → self:id normalization (before the fix it stayed self:Ah Da and self-visibility never matched)
+    wound = next(c for c in h2.conditions if "cut on the right arm" in c.content)
+    assert wound.visibility == "self:h2", f"self:name was not normalized to self:id: {wound.visibility}"
+    assert engine._visible(wound, "h2", "ally") is True      # visible to self
+    assert engine._visible(wound, "h1", "ally") is False     # invisible to others
 
-    # 名字键的 speed_updates / perception_updates 落到 h2
-    assert h2.speed == 3, "名字键的 speed_updates 未生效"
-    assert "吃痛分心" in h2.perception, "名字键的 perception_updates 未生效"
+    # name-keyed speed_updates / perception_updates landed on h2
+    assert h2.speed == 3, "name-keyed speed_updates had no effect"
+    assert "distracted by pain" in h2.perception, "name-keyed perception_updates had no effect"
 
-    # 名字键的 faction_changes（黑衣人→neutral）落到 h3
-    assert s.cards["h3"].faction == "neutral", "名字键的 faction_changes 未生效"
+    # name-keyed faction_changes (Man in Black → neutral) landed on h3
+    assert s.cards["h3"].faction == "neutral", "name-keyed faction_changes had no effect"
 
-    # 私密叙事：名字键 "阿大" 分发到 h2；虚构键 "鬼影" 被跳过、不崩
-    assert s.memory["h2"][-1] == "阿大只觉右臂一麻，握桨发虚。", "名字键私密叙事未分发到对应角色"
-    assert "右臂一麻" not in s.memory["h1"][-1]               # 玩家拿到公开版，非他人私密
-    assert "腕上已见血痕" in s.memory["h1"][-1]               # 公开叙事入玩家记忆
+    # private narration: name key "Ah Da" delivered to h2; made-up key "Ghost" skipped without crashing
+    assert s.memory["h2"][-1] == "Ah Da feels his right arm go numb; his grip on the oar weakens.", "name-keyed private narration not delivered"
+    assert "arm go numb" not in s.memory["h1"][-1]               # the player gets the public version, not someone else's private one
+    assert "blood already marks his wrist" in s.memory["h1"][-1]  # public narration enters the player's memory
 
 
 def test_player_beat_survives_name_keyed_llm_output():
-    """玩家主动一拍（目标用敌人**名字**）：意图→收反应→adjudication→叙事全程跑通、状态落账，不崩。"""
+    """A player-initiated beat (target given by the enemy's **name**): intent → reaction → adjudication → narration runs end to end and records state, no crash."""
     s = _hostile_session()
     pid = engine.player_id(s)
     assert pid == "h1"
 
-    # 玩家拔剑刺向「黑衣人」（用名字），引擎在边界 resolve 回 h3 并向其收反应
-    action = {"action": "拔剑直刺黑衣人咽喉", "target": "黑衣人", "covert": False}
+    # the player thrusts at "Man in Black" (by name); the engine resolves it to h3 at the boundary and collects his reaction
+    action = {"action": "Thrusts his sword straight at the Man in Black's throat", "target": "Man in Black", "covert": False}
 
     async def drive():
-        async for _ in flow._player_action_beat(FakeGrok(), s, action):
+        async for _ in flow._player_action_beat(FakeLLM(), s, action):
             pass
 
-    _run(drive())   # 不抛异常即过边界
+    _run(drive())   # no exception = boundary held
 
-    # 这一拍已落账：裁决的名字键 delta/速度/faction/private 全部生效（与上同源，复用断言要点）
+    # the beat was recorded: name-keyed delta/speed/faction/private all took effect (same source as above, reusing the key assertions)
     h2 = s.ledger.characters["h2"]
-    assert any("右臂被划伤" in c.content for c in h2.conditions)
+    assert any("cut on the right arm" in c.content for c in h2.conditions)
     assert h2.speed == 3
     assert s.cards["h3"].faction == "neutral"
-    # 结构化日志记下了这一拍，且玩家行动文本可见（ally）
+    # the structured log recorded this beat, and the player's action text is visible (ally)
     last = s.log[-1]
     assert last["actor"] == "h1" and last["controller"] == "player"
-    assert last["action_text"] == "拔剑直刺黑衣人咽喉"
+    assert last["action_text"] == "Thrusts his sword straight at the Man in Black's throat"
 
 
-class HiddenFakeGrok(FakeGrok):
-    """敌方一拍**covert**且蒙混过关：裁决返回 detected=False + cover（伪装明面动作）。"""
+class HiddenFakeLLM(FakeLLM):
+    """An enemy **covert** beat that gets away with it: adjudication returns detected=False + cover (the disguised visible action)."""
     async def call(self, prompt, schema, temperature=0.7, max_tokens=2000, model=""):
         name = schema.__name__
         if name == "Intent":
-            # 敌方暗算队友「阿大」（NPC），covert——真意不该进玩家可见层
-            return Intent(action="趁人不备摸向阿大背后下毒手", target="阿大", covert=True)
+            # the enemy ambushes teammate "Ah Da" (an NPC), covert — the true intent must not reach the player-visible layer
+            return Intent(action="Slips behind Ah Da while no one is looking, ready to strike him down", target="Ah Da", covert=True)
         adj = await super().call(prompt, schema, temperature, max_tokens, model)
         if name == "Adjudication":
             adj.detected = False
-            adj.cover = "只是凑近与阿大搭话"
+            adj.cover = "just leans in to chat with Ah Da"
         return adj
 
 
 def test_hidden_enemy_beat_shows_surface_not_true_intent():
-    """敌方隐蔽行动蒙混过关：裁决后的结构化日志 action_text = cover（伪装），真意绝不泄露给玩家。"""
+    """An enemy covert action gets away with it: after adjudication the structured log's action_text = cover; the true intent never leaks to the player."""
     s = _hostile_session()
-    _run(flow.advance(HiddenFakeGrok(), s))   # 跑完敌方那一拍，停在玩家
+    _run(flow.advance(HiddenFakeLLM(), s))   # run the enemy beat, stop at the player
 
     foe_beats = [e for e in s.log if e.get("actor") == "h3"]
-    assert foe_beats, "敌方隐蔽拍未记入结构化日志"
+    assert foe_beats, "the enemy covert beat was not recorded in the structured log"
     last = foe_beats[-1]
-    assert last["action_text"] == "只是凑近与阿大搭话"      # 显表象
-    assert "下毒手" not in (last["action_text"] or "")        # 真意绝不出现在玩家可见 chip
+    assert last["action_text"] == "just leans in to chat with Ah Da"      # shows the cover
+    assert "strike him down" not in (last["action_text"] or "")           # the true intent never appears in the player-visible chip
 
 
 def test_target_resolves_player_by_role_not_hardcoded_id():
-    """敌方意图目标解析：以「controller」认玩家、以名字解析角色，均不依赖写死 id。"""
+    """Resolving an enemy intent's target: the player is found by controller and characters by name, never by hard-coded ids."""
     s = _hostile_session()
-    # 敌方点名玩家（用玩家**名字** "林无敌"）→ 须解析回 h1 并判为「该向玩家收反应」
-    intent = Intent(actor="h3", action="回身扑向林无敌", target="林无敌")
+    # the enemy targets the player by **name** "Lin Wudi" → must resolve to h1 and be judged "collect a reaction from the player"
+    intent = Intent(actor="h3", action="Spins around and lunges at Lin Wudi", target="Lin Wudi")
     assert engine.target_char(s, intent) == "h1"
-    assert engine.needs_reaction(s, intent) == "h1"     # 对玩家一定收反应（靠扮演认出 h1）
+    assert engine.needs_reaction(s, intent) == "h1"     # always collect a reaction from the player (h1 recognized by controller)

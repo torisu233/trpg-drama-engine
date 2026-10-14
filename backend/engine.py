@@ -1,37 +1,72 @@
-"""内核引擎（纯逻辑，none API）：action_bar、两轴判定、迷雾过滤、delta 套用。
+"""Core engine (pure logic, no API calls): action bar, two-axis checks, fog-of-war filtering, delta application.
 
-这些都是可单测的纯函数；agent 调用在 agents.py，流程编排在 flow.py。
+These are all unit-testable pure functions; agent calls live in agents.py and orchestration in flow.py.
 """
 import random
+import re
 from typing import List, Optional, Tuple
 from .models import Session, Condition, DeltaItem, LedgerDelta, Adjudication
 from . import config
 
 PLAYER = "player"
 
-# 触发「无法反应 / 失能」的关键字
-INCAPACITATED_KW = ("昏迷", "失去意识", "绑", "缚", "瘫", "晕", "制伏", "压制")
-# 环境争议关键字（无对手仍是赌注）
-RISKY_KW = ("跳", "攀", "潜", "赌", "抢", "翻越", "扑", "闪身")
+# Keywords below match LLM-written condition/action text: whole words or phrases, case-insensitive.
+# Perception states that mean a character perceives nothing
+UNCONSCIOUS_KW = ("unconscious", "knocked out", "passed out", "fainted", "out cold", "comatose")
+# Keywords that mean "cannot react / incapacitated"
+INCAPACITATED_KW = UNCONSCIOUS_KW + (
+    "bound", "tied", "restrained", "shackled", "paralyzed", "paralysed",
+    "stunned", "subdued", "pinned", "immobilized", "incapacitated",
+)
+# Environmental-risk keywords (a gamble even with no opponent)
+RISKY_KW = (
+    "jump", "jumps", "jumped", "jumping",
+    "leap", "leaps", "leapt", "leaped", "leaping",
+    "climb", "climbs", "climbed", "climbing",
+    "sneak", "sneaks", "sneaked", "sneaking", "snuck",
+    "gamble", "gambles", "gambled", "gambling",
+    "grab", "grabs", "grabbed", "grabbing",
+    "snatch", "snatches", "snatched", "snatching",
+    "vault", "vaults", "vaulted", "vaulting",
+    "lunge", "lunges", "lunged", "lunging",
+    "pounce", "pounces", "pounced", "pouncing",
+    "dodge", "dodges", "dodged", "dodging",
+)
+# Keywords that take a character out of the scene (end condition)
+END_KW = ("dead", "died", "killed", "slain", "deceased",
+          "bound beyond escape", "hopelessly bound", "completely subdued", "fully subdued")
+
+
+def _kw_regex(words) -> "re.Pattern":
+    return re.compile(r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b", re.IGNORECASE)
+
+
+_UNCONSCIOUS_RE = _kw_regex(UNCONSCIOUS_KW)
+_INCAPACITATED_RE = _kw_regex(INCAPACITATED_KW)
+_RISKY_RE = _kw_regex(RISKY_KW)
+# "dead" as an intensifier ("dead drunk", "dead tired") must not end the scene
+_END_RE = re.compile(_kw_regex(END_KW).pattern.replace(
+    r"dead", r"dead(?!\s+(?:drunk|tired|silent|quiet|still|serious|set|calm))", 1), re.IGNORECASE)
 
 
 def resolve_id(s: Session, key) -> Optional[str]:
-    """把 LLM 给的角色「名字或 id」解析回 char_id。
+    """Resolve a character "name or id" given by the LLM back to a char_id.
 
-    设计：agent 一律看/用角色名，程序只在操作边界用本函数转回 id。
-    兼容三种输入：已是 id → 原样；是某角色的「name」→ 该 id；都不匹配 → None。"""
+    Design: agents always see/use character names; the program converts back to ids only at the
+    operation boundary, via this function. Accepts: already an id → as is; a character's name → that id;
+    no match → None."""
     if not key:
         return None
-    if key in s.cards:                       # 已是 id
+    if key in s.cards:                       # already an id
         return key
-    for cid, c in s.cards.items():            # 按名字匹配（名字应唯一）
+    for cid, c in s.cards.items():            # match by name (names should be unique)
         if c.name == key:
             return cid
     return None
 
 
 def player_id(s: Session) -> str:
-    """玩家角色 id：靠语义字段「controller==player」识别，**不依赖写死的 id**。找不到则兜底回 PLAYER。"""
+    """Player character id: identified by the semantic field controller=="player", **never a hard-coded id**. Falls back to PLAYER."""
     for cid, c in s.cards.items():
         if c.controller == "player":
             return cid
@@ -39,71 +74,73 @@ def player_id(s: Session) -> str:
 
 
 def prune_orphans(s: Session) -> None:
-    """剔除「present / ledger」里引用了不存在角色卡的孤儿 id（就地修改）。
+    """Drop orphan ids in present / ledger that reference non-existent character cards (in place).
 
-    保证不变量「present ⊆ cards」「ledger.角色键 ⊆ cards」，杜绝下游各处裸 `s.cards[cid]`
-    （ground_truth / build_view / flow 维护…）因不一致剧本而 KeyError。开局与读档两个入口都调。"""
+    Guarantees the invariants present ⊆ cards and ledger character keys ⊆ cards, so the bare
+    `s.cards[cid]` lookups downstream (ground_truth / build_view / flow upkeep…) never KeyError on an
+    inconsistent scenario. Called from both entry points: new game and load game."""
     s.scene.present = [cid for cid in s.scene.present if cid in s.cards]
     s.ledger.characters = {cid: cl for cid, cl in s.ledger.characters.items() if cid in s.cards}
 
 
 def validate_playable(s: Session) -> Optional[str]:
-    """开局前的可玩性校验：返回「不可玩的原因」字符串，可玩则 None。
+    """Pre-game playability check: returns the reason the scenario is unplayable, or None if playable.
 
-    把两类会让 new_game 崩/挂的不完整剧本，挡成清晰的拒绝（而非 500 或无限循环）：
-      ① 无任何有行动条的角色 → pick_actor 无人可动（原会 ValueError→500）。
-      ② none「controller==player」或玩家不在场 → advance 永远轮不到玩家、停不下来（原会无限 LLM 循环）。
+    Turns two kinds of incomplete scenarios that would crash/hang new_game into a clear rejection
+    (instead of a 500 or an infinite loop):
+      1. No character with an action bar → pick_actor has nobody to move (used to ValueError → 500).
+      2. No controller=="player", or the player isn't present → advance never reaches the player and never stops (used to loop the LLM forever).
     """
     if not s.ledger.characters:
-        return "没有任何在场角色（请在场景「present」里至少放一个角色）"
+        return "no characters are present (add at least one character to the scene's present list)"
     players = [cid for cid, c in s.cards.items() if c.controller == "player"]
     if not players:
-        return "缺少玩家角色（需把某个角色的「controller」设为「player」）"
+        return "missing a player character (set one character's controller to player)"
     if not any(pid in s.ledger.characters for pid in players):
-        return "玩家角色不在场（请把玩家角色加入场景「present」）"
+        return "the player character is not present (add the player character to the scene's present list)"
     return None
 
 
-# ───────────────── action_bar ─────────────────
+# ───────────────── action bar ─────────────────
 def _tick(s: Session) -> None:
     for cl in s.ledger.characters.values():
         cl.gauge += cl.speed
 
 
 def pick_actor(s: Session) -> str:
-    """每次调用先 +1 拍；没人达门槛就继续加，直到有人达标。返回行动者 id。"""
+    """Each call first advances one beat; if nobody has reached the threshold, keep ticking until someone does. Returns the actor id."""
     actors = s.ledger.characters
-    if not actors:                            # 无人有初始局面 → 否则下面会死循环
-        raise ValueError("无可行动角色：ledger.角色为空（剧本缺初始局面）")
-    _tick(s)  # 「场上每行动一次，大家加一次」
+    if not actors:                            # nobody has an initial state → otherwise the loop below never ends
+        raise ValueError("No character can act: ledger.characters is empty (scenario is missing initial state)")
+    _tick(s)  # "every time someone acts, everyone ticks once"
     safety = 0
     while not any(cl.gauge >= config.ACTION_THRESHOLD for cl in actors.values()):
         _tick(s)
         safety += 1
-        if safety > 100000:                   # 兜底：全员速度<=0 等异常，绝不死循环
+        if safety > 100000:                   # fallback: all speeds <= 0 or similar; never loop forever
             break
     ready = [cid for cid, cl in actors.items()
              if cl.gauge >= config.ACTION_THRESHOLD]
-    if not ready:                             # 没人达门槛（异常）→ 取行动值最高者兜底
+    if not ready:                             # nobody reached the threshold (abnormal) → take the highest gauge
         ready = [max(actors, key=lambda c: actors[c].gauge)]
-    # 纯按行动值排序：高者先动；相同则不额外排序，取在场/字典的自然顺序
-    # （max 在并列时返回首个最大值，故等同自然顺序——不再让玩家无条件优先）
+    # Order purely by gauge: highest goes first; ties keep the natural present/dict order
+    # (max returns the first maximum on ties, i.e. natural order — the player no longer wins ties unconditionally)
     return max(ready, key=lambda c: actors[c].gauge)
 
 
 def consume_turn(s: Session, actor: str) -> None:
-    s.ledger.characters[actor].gauge -= config.ACTION_THRESHOLD   # 扣门槛、保留溢出
+    s.ledger.characters[actor].gauge -= config.ACTION_THRESHOLD   # subtract the threshold, keep the overflow
 
 
 def beats_to_act(cl, threshold: int = config.ACTION_THRESHOLD) -> int:
-    """还差几拍这个角色才到行动门槛（程序算好；负初始行动值→很多拍后，模拟缓慢逼近）。"""
-    速 = max(cl.speed, 1)
-    需 = max(threshold - cl.gauge, 0)
-    return (需 + 速 - 1) // 速
+    """How many beats until this character reaches the action threshold (computed by the program; a negative starting gauge → many beats away, simulating a slow approach)."""
+    spd = max(cl.speed, 1)
+    need = max(threshold - cl.gauge, 0)
+    return (need + spd - 1) // spd
 
 
 def action_order(s: Session) -> list:
-    """在场角色按「还有几拍轮到」升序：[(cid, name, faction, beats)…]。供 agent 了解行动次序与逼近。"""
+    """Present characters sorted by beats until their turn: [(cid, name, faction, beats)…]. Lets agents see turn order and who is closing in."""
     rows = []
     for cid in s.scene.present:
         cl = s.ledger.characters.get(cid)
@@ -114,52 +151,52 @@ def action_order(s: Session) -> list:
     return rows
 
 
-# ───────────────── 感知 / 两轴 ─────────────────
+# ───────────────── perception / two axes ─────────────────
 def _perceives(s: Session, who: str) -> bool:
     cap = s.ledger.characters[who].perception
-    return not any(k in cap for k in ("昏迷", "失去意识"))
+    return not _UNCONSCIOUS_RE.search(cap or "")
 
 
 def _can_oppose(s: Session, who: str) -> bool:
     cl = s.ledger.characters[who]
-    if any(k in cl.perception for k in ("昏迷", "失去意识")):
+    if _UNCONSCIOUS_RE.search(cl.perception or ""):
         return False
     blob = " ".join(c.content for c in cl.status_effects)
-    return not any(k in blob for k in INCAPACITATED_KW)
+    return not _INCAPACITATED_RE.search(blob)
 
 
 def target_char(s: Session, intent) -> Optional[str]:
-    t = resolve_id(s, intent.target)            # 目标可能是名字或 id，统一解析回 id
+    t = resolve_id(s, intent.target)            # the target may be a name or an id; resolve to an id
     if t and t in s.ledger.characters and t != intent.actor:
         return t
     return None
 
 
 def needs_reaction(s: Session, intent) -> Optional[str]:
-    """轴 A：是否该向某角色收反应？返回该角色 id 或 None。
-    闸门：对方是角色 ∧（是玩家 ∨（感知得到 ∧ 能对抗））。模棱两可宁可多收。"""
+    """Axis A: should we collect a reaction from some character? Returns that character's id or None.
+    Gate: the target is a character ∧ (is the player ∨ (can perceive ∧ can oppose)). When in doubt, ask."""
     tgt = target_char(s, intent)
     if not tgt:
         return None
     if tgt == player_id(s):
-        return tgt                          # 对玩家一定收
+        return tgt                          # always ask the player
     if _perceives(s, tgt) and _can_oppose(s, tgt):
         return tgt
     return None
 
 
 def is_contested(s: Session, intent, reaction_target: Optional[str]) -> bool:
-    """轴 B：是否争议（掷运气）？被主动对抗 或 环境本身是赌注。"""
+    """Axis B: is this contested (roll luck)? Actively opposed, or the environment itself is a gamble."""
     if reaction_target:
         return True
-    return any(k in (intent.action or "") for k in RISKY_KW)
+    return bool(_RISKY_RE.search(intent.action or ""))
 
 
 def roll_luck() -> str:
     return random.choices(config.LUCK_TIERS, weights=config.LUCK_WEIGHTS, k=1)[0]
 
 
-# ───────────────── 迷雾：产出某角色可见的视图文字 ─────────────────
+# ───────────────── fog of war: the view text a given character can see ─────────────────
 def _visible(cond: Condition, viewer: str, faction: str) -> bool:
     v = cond.visibility
     if v == "public":
@@ -178,53 +215,53 @@ def _fmt_conds(conds: List[Condition], viewer: str, faction: str) -> List[str]:
     for c in conds:
         if not _visible(c, viewer, faction):
             continue
-        g = f"（{c.gates}）" if c.gates else ""
+        g = f" ({c.gates})" if c.gates else ""
         d = f"[{c.severity}]" if c.severity else ""
         out.append(f"{c.content}{d}{g}")
     return out
 
 
 def build_view(s: Session, viewer: str) -> str:
-    """组出 viewer 能看到的局面文字（喂给角色 agent）。维持迷雾。"""
+    """Build the situation text the viewer can see (fed to the character agent). Preserves fog of war."""
     faction = s.cards[viewer].faction
-    lines = [f"【scene】{s.scene.location}"]
+    lines = [f"[Scene] {s.scene.location}"]
 
-    # 场景公开事实
+    # public scene facts
     facts = _fmt_conds(s.ledger.scene.scene_facts, viewer, faction) \
         + _fmt_conds(s.ledger.scene.spatial, viewer, faction)
     if facts:
-        lines.append("【surroundings】" + "；".join(facts))
+        lines.append("[Surroundings] " + "; ".join(facts))
     social = _fmt_conds(s.ledger.scene.social_facts, viewer, faction)
     if social:
-        lines.append("【约定/intel】" + "；".join(social))
+        lines.append("[Agreements/Intel] " + "; ".join(social))
 
-    # 各角色（自己看全部；别人只看公开＋可见）
+    # characters (self sees everything; others only public + visible)
     for cid, cl in s.ledger.characters.items():
         if cid not in s.scene.present:
             continue
         card = s.cards[cid]
-        g = f"，{card.gender}" if card.gender else ""
-        self_mark = "·本人" if cid == viewer else ""   # 不用「你」——「你」留给叙事专指主角玩家
-        seg = [f"{card.name}（{card.faction}{g}{self_mark}）：{cl.posture or 'present'}"]
+        g = f", {card.gender}" if card.gender else ""
+        self_mark = ", self" if cid == viewer else ""   # not "you" — "you" is reserved for narration addressing the player
+        seg = [f"{card.name} ({card.faction}{g}{self_mark}): {cl.posture or 'present'}"]
         body = _fmt_conds(cl.conditions, viewer, faction) + _fmt_conds(cl.status_effects, viewer, faction)
-        if cid == viewer:                    # 自己能看到自己的随身与物品
+        if cid == viewer:                    # you can see your own carried state and items
             body += _fmt_conds(cl.carried, viewer, faction)
             if cl.items:
-                body.append("inventory：" + "、".join(f"{it.name}({it.state})" for it in cl.items.values()))
+                body.append("Holding: " + ", ".join(f"{it.name} ({it.state})" for it in cl.items.values()))
         if body:
-            seg.append("，".join(body))
-        lines.append(" ".join(seg))
+            seg.append("; ".join(body))
+        lines.append(" | ".join(seg))
 
-    # 阵营私有计策
+    # faction-private plans
     plans = s.ledger.faction_private.get(faction, {}).get("plans", [])
     if plans:
-        lines.append("【我方计策】" + "；".join(plans))
+        lines.append("[Our Plans] " + "; ".join(plans))
 
     return "\n".join(lines)
 
 
 def player_situation(s: Session, viewer: Optional[str] = None) -> dict:
-    """玩家可见的环境与社会面（迷雾过滤）：scene/surroundings/约定情报/我方计策。结构化给前端。"""
+    """Environment and social state visible to the player (fog-filtered): scene/surroundings/intel/plans. Structured for the frontend."""
     viewer = viewer or player_id(s)
     fac = s.cards[viewer].faction
     sc = s.ledger.scene
@@ -237,9 +274,9 @@ def player_situation(s: Session, viewer: Optional[str] = None) -> dict:
 
 
 def known_characters(s: Session, viewer: Optional[str] = None) -> list:
-    """玩家所知的在场角色（结构化）。
-    - 同阵营（含自己）：给完整角色卡——abilities/防御/weaknesses/动机等，对队友本就知情。
-    - 敌方：只给可见状态——底细是要靠观察发现的秘密，不注入。
+    """Present characters as the player knows them (structured).
+    - Same faction (incl. self): the full card — abilities/defenses/weaknesses/motive etc.; teammates know each other.
+    - Enemies: visible state only — their secrets must be discovered through play, so they are not injected.
     """
     viewer = viewer or player_id(s)
     fac = s.cards[viewer].faction
@@ -256,20 +293,20 @@ def known_characters(s: Session, viewer: Optional[str] = None) -> list:
             "posture": cl.posture, "speed": cl.speed, "perception": cl.perception,
             "state": _fmt_conds(cl.conditions, viewer, fac) + _fmt_conds(cl.status_effects, viewer, fac),
         }
-        if ally:                                  # 我方互知底细
+        if ally:                                  # allies know each other's details
             item.update({
                 "backstory": card.backstory, "personality": card.personality, "voice": card.voice,
                 "motive": card.motive, "tactics": card.tactics,
                 "abilities": card.abilities, "defenses": card.defenses, "weaknesses": card.weaknesses,
             })
-            if cid == viewer and cl.items:         # 自己看得到随身物品
-                item["inventory"] = [f"{it.name}（{it.state}）" for it in cl.items.values()]
+            if cid == viewer and cl.items:         # you can see your own items
+                item["inventory"] = [f"{it.name} ({it.state})" for it in cl.items.values()]
         out.append(item)
     return out
 
 
 def faction_mates(s: Session, cid: str) -> List[str]:
-    """与 cid 同阵营、在场的其他角色 id（同阵营互看整张卡用；跨阵营不含）。"""
+    """Other present characters in cid's faction (same faction sees each other's full card; other factions excluded)."""
     me = s.cards.get(cid)
     if not me:
         return []
@@ -278,38 +315,38 @@ def faction_mates(s: Session, cid: str) -> List[str]:
 
 
 def ground_truth(s: Session) -> str:
-    """给裁决的完整地面真相（全可见，含 gm 秘密）。"""
-    lines = [f"【scene】{s.scene.location}"]
+    """Complete ground truth for adjudication (everything visible, including gm secrets)."""
+    lines = [f"[Scene] {s.scene.location}"]
     for c in s.ledger.scene.scene_facts + s.ledger.scene.spatial + s.ledger.scene.social_facts:
         tag = "" if c.visibility == "public" else f" <{c.visibility}>"
-        g = f"（{c.gates}）" if c.gates else ""
+        g = f" ({c.gates})" if c.gates else ""
         lines.append(f"- {c.content}{g}{tag}")
     for cid, cl in s.ledger.characters.items():
         card = s.cards.get(cid)
-        if card is None:                      # 防御：孤儿会变层条目（prune_orphans 已清，双保险，护住裁决主路径）
+        if card is None:                      # defensive: orphan ledger entry (prune_orphans already cleans these; belt and braces for the adjudication path)
             continue
         g = f"/{card.gender}" if card.gender else ""
-        lines.append(f"◆ {card.name}（{card.faction}{g}）速度{cl.speed} 感知:{cl.perception}")
+        lines.append(f"* {card.name} ({card.faction}{g}) speed {cl.speed} perception: {cl.perception}")
         if card.abilities:
-            lines.append(f"  abilities：{'、'.join(card.abilities)}")
+            lines.append(f"  Abilities: {', '.join(card.abilities)}")
         if card.defenses:
-            lines.append(f"  defenses：{'、'.join(card.defenses)}")
+            lines.append(f"  Defenses: {', '.join(card.defenses)}")
         if card.weaknesses:
-            lines.append(f"  weaknesses：{'、'.join(card.weaknesses)}")
-        lines.append(f"  posture：{cl.posture}")
+            lines.append(f"  Weaknesses: {', '.join(card.weaknesses)}")
+        lines.append(f"  Posture: {cl.posture}")
         for c in cl.conditions + cl.status_effects + cl.carried:
             tag = "" if c.visibility == "public" else f" <{c.visibility}>"
-            g = f"（{c.gates}）" if c.gates else ""
+            g = f" ({c.gates})" if c.gates else ""
             lines.append(f"  - {c.content}{g}{tag}")
         for it in cl.items.values():
-            lines.append(f"  - items {it.name}：{it.state}，{it.location}")
+            lines.append(f"  - Item {it.name}: {it.state}, {it.location}")
     return "\n".join(lines)
 
 
-# ───────────────── 套用裁决 delta（防御式，绝不崩） ─────────────────
+# ───────────────── apply the adjudication delta (defensive, never crashes) ─────────────────
 def _normalize_vis(s: Session, vis: str) -> str:
-    """visibility self:<X> 里 X 可能是名字（agent 用名）→ 解析回 id，否则玩家/角色对不上自见状态。
-    faction:<faction> 用的是阵营值（ally/enemy/neutral）不是名字，无需解析。"""
+    """In visibility self:<X>, X may be a name (agents use names) → resolve to an id, otherwise self-only state never matches.
+    faction:<faction> uses a faction value (ally/enemy/neutral), not a name, so no resolution is needed."""
     if vis and vis.startswith("self:"):
         cid = resolve_id(s, vis.split(":", 1)[1])
         if cid:
@@ -336,12 +373,12 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
         if d.subject == "scene":
             if d.category == "spatial":
                 s.ledger.scene.spatial.append(cond)
-            elif d.category in ("social_facts", "承诺", "协议", "结盟", "停火"):
+            elif d.category in ("social_facts", "promise", "agreement", "alliance", "truce"):
                 s.ledger.scene.social_facts.append(cond)
             else:
                 s.ledger.scene.scene_facts.append(cond)
         else:
-            bid = resolve_id(s, d.subject)        # 主体可能是名字或 id
+            bid = resolve_id(s, d.subject)        # the subject may be a name or an id
             if bid and bid in s.ledger.characters:
                 cl = s.ledger.characters[bid]
                 if d.category == "posture":
@@ -350,7 +387,7 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
                     cl.status_effects.append(cond)
                 else:
                     cl.conditions.append(cond)
-    # remove（以关键字匹配；跳过空串——否则 "" in content 恒真会清空整列）
+    # remove (keyword match; skip empty strings — "" in content is always true and would wipe the whole list)
     for key in delta.remove:
         if not key:
             continue
@@ -360,12 +397,12 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
         s.ledger.scene.scene_facts = _remove_matching(s.ledger.scene.scene_facts, key)
         s.ledger.scene.spatial = _remove_matching(s.ledger.scene.spatial, key)
         s.ledger.scene.social_facts = _remove_matching(s.ledger.scene.social_facts, key)
-    # modify（简化：当作 add 一条新状况）
+    # modify (simplified: treated as adding a new condition)
     for d in delta.modify:
         bid = resolve_id(s, d.subject)
         if bid and bid in s.ledger.characters:
             s.ledger.characters[bid].conditions.append(_to_cond(s, d, turn))
-    # 衍生字段更新（键可能是名字或 id，统一 resolve_id）
+    # derived-field updates (keys may be names or ids; resolve_id for all)
     for k, sp in adj.speed_updates.items():
         cid = resolve_id(s, k)
         if cid and cid in s.ledger.characters:
@@ -374,31 +411,31 @@ def apply_delta(s: Session, adj: Adjudication) -> None:
         cid = resolve_id(s, k)
         if cid and cid in s.ledger.characters:
             s.ledger.characters[cid].perception = cap
-    # faction_changes（倒戈/投靠/被策反）：就地改角色卡阵营，影响今后的同阵营可见性
+    # faction_changes (defect/join/turned): change the card's faction in place; affects same-faction visibility from now on
     for k, fac in adj.faction_changes.items():
         cid = resolve_id(s, k)
         if cid and fac:
             s.cards[cid].faction = fac
 
 
-# ───────────────── 结构化日志条目（actor + 我方输入文本，供前端展示） ─────────────────
+# ───────────────── structured log entries (actor + ally input text, for the frontend) ─────────────────
 def log_system_entry(text: str) -> dict:
-    """系统行（scene/开场/ended）：无行动者。"""
+    """System line (scene/opening/ended): no actor."""
     return {"narration": text, "actor": None, "actor_name": None, "faction": None, "controller": None,
             "action_text": None, "reaction_text": None, "reactor_name": None}
 
 
 def visible_action_text(intent, ally: bool, cover: str = "",
                         detected: bool = False, resolved: bool = True) -> Optional[str]:
-    """玩家在「action chip」上看到的该角色明面动作（按隐蔽与否分流）。真值表：
+    """The character's visible action the player sees on the action chip (gated on covert or not). Truth table:
 
-      开放(not covert)，任意阵营/任意时点      → 真意(intent.action)   # 含敌方、含预告帧
-      covert + 行动者我方                      → 真意                # 玩家与其同阵营，知底
-      covert + 非我方 + 裁决前(预告帧)         → None                # 敌方隐蔽不预告
-      covert + 非我方 + 裁决后 + 被识破         → 真意                # 伪装被看穿，真相暴露
-      covert + 非我方 + 裁决后 + 未识破         → cover or None        # 蒙混过关显伪装；裁决漏填也绝不漏真意
+      open (not covert), any faction / any time       → true intent (intent.action)   # incl. enemies and preview frames
+      covert + actor is ally                          → true intent                    # same faction as the player, they know
+      covert + not ally + before adjudication (preview) → None                       # enemy covert actions are not previewed
+      covert + not ally + after adjudication + detected → true intent                # cover blown, the truth is exposed
+      covert + not ally + after adjudication + undetected → cover or None            # got away with it, show the cover; never leak the intent even if adjudication left it blank
 
-    注：本闸门「显什么」用表象/真意分流；而 is_contested 等**判定**始终用真意（intent.action），二者有意分开。"""
+    Note: this gate decides what to *show* (cover vs. intent); checks like is_contested always use the true intent (intent.action). The two are deliberately separate."""
     if not getattr(intent, "covert", False):
         return intent.action
     if ally:
@@ -413,9 +450,9 @@ def visible_action_text(intent, ally: bool, cover: str = "",
 def log_action_entry(s: Session, intent, reaction, actor: str, narration: str,
                      cover: str = "", detected: bool = False, resolved: bool = True,
                      time_skip: str = "") -> dict:
-    """一拍的结构化记录：总记行动者；行动文本按 visible_action_text 分流
-    （开放行动连敌方也可见；隐蔽敌方裁决前不显、裁决后显表象/被识破才显真意）。反应文本仍仅我方可见（本轮不动）。
-    推进非空＝本拍含时间跳跃，供前端画「时间流逝」分隔线。"""
+    """Structured record of one beat: always records the actor; action text is gated by visible_action_text
+    (open actions are visible even for enemies; enemy covert actions are hidden before adjudication, then show the cover, or the true intent only if detected). Reaction text is still ally-only.
+    A non-empty time_skip means this beat contains a time jump; the frontend draws a "time passes" divider."""
     card = s.cards.get(actor)
     ally = bool(card and card.faction == "ally")
     e = {
@@ -423,11 +460,11 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str,
         "actor": actor,
         "actor_name": card.name if card else actor,
         "faction": card.faction if card else "",
-        "controller": card.controller if card else "",   # 「player」/「agent」——判定是不是玩家用（不靠 id）
+        "controller": card.controller if card else "",   # "player"/"agent" — used to tell whether this is the player (not by id)
         "action_text": visible_action_text(intent, ally, cover, detected, resolved),
         "reaction_text": None,
         "reactor_name": None,
-        "time_skip": time_skip or None,             # 时间跳跃描述（非空才显分隔线）；预告帧/普通拍为 None
+        "time_skip": time_skip or None,             # time-jump description (divider only when non-empty); None for preview frames/normal beats
     }
     if reaction is not None:
         rc = s.cards.get(reaction.actor)
@@ -438,15 +475,15 @@ def log_action_entry(s: Session, intent, reaction, actor: str, narration: str,
 
 
 def log_pending_entry(s: Session, actor: str, intent, reaction=None) -> dict:
-    """进行中的拍（叙事未出，narration=None）：与 log_action_entry 同闸门但 resolved=False
-    ——故敌方隐蔽行动在裁决前恒不预告；开放行动（含敌方）与我方行动则照样提前显示。"""
+    """A beat in progress (narration not out yet, narration=None): same gate as log_action_entry but resolved=False
+    — so enemy covert actions are never previewed before adjudication, while open actions (incl. enemy) and ally actions show early."""
     return log_action_entry(s, intent, reaction, actor, None, resolved=False)
 
 
-# ───────────────── 分发叙事（GM 写、程序送） ─────────────────
+# ───────────────── distribute narration (GM writes, program delivers) ─────────────────
 def distribute(s: Session, public: str, private: dict) -> None:
     s.public_log.append(public)
-    # 私密叙事的键可能是角色名（agent 用名），解析回 id 再按角色分发
+    # private narration keys may be character names (agents use names); resolve to ids, then deliver per character
     by_id = {}
     for k, v in (private or {}).items():
         cid = resolve_id(s, k)
@@ -457,7 +494,7 @@ def distribute(s: Session, public: str, private: dict) -> None:
         s.memory.setdefault(cid, []).append(msg)
 
 
-# ───────────────── 账本清理：瞬态 TTL 自动过期 ─────────────────
+# ───────────────── ledger cleanup: transient TTL expiry ─────────────────
 def _alive(c: Condition, turn: int) -> bool:
     if c.ttl is None or c.created_turn is None:
         return True
@@ -465,7 +502,7 @@ def _alive(c: Condition, turn: int) -> bool:
 
 
 def expire_transients(s: Session) -> None:
-    """移除已到期的瞬态状态（剩余拍数用尽）。每拍结束调用。"""
+    """Remove expired transient states (ttl used up). Called at the end of every beat."""
     turn = s.turn
     for cl in s.ledger.characters.values():
         cl.conditions = [c for c in cl.conditions if _alive(c, turn)]
@@ -476,10 +513,10 @@ def expire_transients(s: Session) -> None:
     sc.social_facts = [c for c in sc.social_facts if _alive(c, turn)]
 
 
-# ───────────────── 结束条件 ─────────────────
+# ───────────────── end conditions ─────────────────
 def check_end(s: Session) -> Optional[str]:
     for cid, cl in s.ledger.characters.items():
         blob = " ".join(c.content for c in cl.conditions + cl.status_effects)
-        if any(k in blob for k in ("死亡", "毙命", "重缚无法脱身", "彻底制伏")):
-            return f"{s.cards[cid].name} 已退场：{blob}"
+        if _END_RE.search(blob):
+            return f"{s.cards[cid].name} is out of the scene: {blob}"
     return None

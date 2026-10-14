@@ -1,8 +1,8 @@
-"""反馈聊天：普通用户与 admin 来回对话。
+"""Feedback chat: back-and-forth conversation between regular users and admin.
 
-- 用户端（current_user）：只能读/写自己那条会话线。
-- admin 端（current_admin）：看所有会话列表、读/回某用户的会话；非 admin 一律 403。
-权限全在后端把关，前端按角色显示哪个入口只是 UX。
+- User side (current_user): can only read/write their own thread.
+- Admin side (current_admin): sees the list of all threads, reads/replies to a user's thread; non-admins always get 403.
+Permissions are enforced entirely on the backend; which entry point the frontend shows per role is just UX.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -35,7 +35,7 @@ def _thread(db: Session, uid: int) -> list:
     return [_msg(m) for m in rows]
 
 
-# ── 用户端（自己那条线）──
+# ── user side (own thread) ──
 @router.get("")
 def my_thread(user: User = Depends(current_user), db: Session = Depends(get_db)):
     return {"messages": _thread(db, user.id)}
@@ -45,16 +45,16 @@ def my_thread(user: User = Depends(current_user), db: Session = Depends(get_db))
 def my_send(body: MessageIn, user: User = Depends(current_user), db: Session = Depends(get_db)):
     text = body.body.strip()
     if not text:
-        raise HTTPException(400, "内容不能为空")
+        raise HTTPException(400, "Message cannot be empty")
     db.add(FeedbackMessage(thread_user_id=user.id, sender_is_admin=False, body=text, is_read=False))
     db.commit()
     return {"ok": True}
 
 
-# ── admin 端（所有会话）──
+# ── admin side (all threads) ──
 @router.get("/threads")
 def threads(admin: User = Depends(current_admin), db: Session = Depends(get_db)):
-    """会话列表：每个用户最新一条 + 未读数（该用户发的、admin 未读的）。按最新活动倒序。"""
+    """Thread list: each user's latest message + unread count (sent by that user, unread by admin). Sorted by latest activity, newest first."""
     agg = {}
     for m in db.query(FeedbackMessage).order_by(FeedbackMessage.created_at.asc()).all():
         t = agg.setdefault(m.thread_user_id, {"unread": 0, "last": "", "last_at": None})
@@ -75,7 +75,7 @@ def threads(admin: User = Depends(current_admin), db: Session = Depends(get_db))
 
 @router.get("/{user_id}")
 def admin_thread(user_id: int, admin: User = Depends(current_admin), db: Session = Depends(get_db)):
-    """读某用户的会话，并把其未读消息标记为已读（admin 打开即已读）。"""
+    """Read a user's thread and mark their unread messages as read (opening it as admin marks it read)."""
     msgs = _thread(db, user_id)
     db.query(FeedbackMessage).filter(
         FeedbackMessage.thread_user_id == user_id,
@@ -91,9 +91,9 @@ def admin_thread(user_id: int, admin: User = Depends(current_admin), db: Session
 def admin_reply(user_id: int, body: MessageIn, admin: User = Depends(current_admin), db: Session = Depends(get_db)):
     text = body.body.strip()
     if not text:
-        raise HTTPException(400, "内容不能为空")
+        raise HTTPException(400, "Message cannot be empty")
     if not db.get(User, user_id):
-        raise HTTPException(404, "用户不存在")
+        raise HTTPException(404, "User not found")
     db.add(FeedbackMessage(thread_user_id=user_id, sender_is_admin=True, body=text, is_read=True))
     db.commit()
     return {"ok": True}

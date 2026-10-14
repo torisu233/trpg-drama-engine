@@ -1,8 +1,9 @@
-"""LLM 客户端：openai SDK（OpenAI 兼容端点，现指向 DeepSeek）+ instructor。
+"""LLM client: openai SDK (any OpenAI-compatible endpoint, currently DeepSeek) + instructor.
 
-instructor 的 max_retries 提供「结构化输出验证失败时自动把错误回馈给模型重问」的保险，
-让四个 agent 的 JSON 输出更稳（也兜住 DeepSeek JSON mode 偶发空内容）。对外维持相同的 call() 接口。
-env：LLM_API_KEY / LLM_API_BASE_URL / LLM_MODEL（值为 DeepSeek）。
+instructor's max_retries adds a safety net: when structured output fails validation, the error is
+fed back to the model and it is asked again. This keeps the four agents' JSON output stable (and also
+covers DeepSeek JSON mode occasionally returning empty content). The public call() interface is unchanged.
+env: LLM_API_KEY / LLM_API_BASE_URL / LLM_MODEL (values point at DeepSeek).
 """
 import os
 import logging
@@ -15,19 +16,19 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
-class GrokError(Exception):
+class LLMError(Exception):
     pass
 
 
-class GrokClient:
+class LLMClient:
     def __init__(self, timeout: float = 60.0, max_retries: int = 3):
         api_key = os.getenv("LLM_API_KEY")
         base_url = os.getenv("LLM_API_BASE_URL", "https://api.deepseek.com")
         if not api_key:
-            raise ValueError("LLM_API_KEY 未设置，请在 .env 配置")
-        # DeepSeek 与 OpenAI API 兼容
+            raise ValueError("LLM_API_KEY is not set; configure it in .env")
+        # DeepSeek is OpenAI API compatible
         self._raw = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
-        # JSON 模式：强制 json_object 输出 + Pydantic 验证；失败自动重问
+        # JSON mode: force json_object output + Pydantic validation; re-ask automatically on failure
         self.client = instructor.from_openai(self._raw, mode=instructor.Mode.JSON)
         self.max_retries = max_retries
         self.model_default = os.getenv("LLM_MODEL", "deepseek-chat")
@@ -40,7 +41,7 @@ class GrokClient:
         max_tokens: int = 2000,
         model: str = "",
     ) -> T:
-        """调用 Grok，返回经 Pydantic 验证的结构化对象；验证失败会自动重问。"""
+        """Call the LLM and return a Pydantic-validated structured object; re-asks automatically on validation failure."""
         try:
             return await self.client.chat.completions.create(
                 model=model or self.model_default,
@@ -51,8 +52,8 @@ class GrokClient:
                 max_retries=self.max_retries,
             )
         except Exception as e:
-            logger.error(f"[Grok] {schema.__name__} 调用/验证失败: {e}")
-            raise GrokError(f"Grok 调用/验证失败（{schema.__name__}）: {e}") from e
+            logger.error(f"[LLM] {schema.__name__} call/validation failed: {e}")
+            raise LLMError(f"LLM call/validation failed ({schema.__name__}): {e}") from e
 
     async def close(self):
         await self._raw.close()

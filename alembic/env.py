@@ -5,10 +5,10 @@ from sqlalchemy import pool
 
 from alembic import context
 
-# 用项目自己的 DATABASE_URL 与模型 metadata（不走 alembic.ini 里的占位 url）
+# Use the project's own DATABASE_URL and model metadata (not the placeholder url in alembic.ini)
 from backend.config import DATABASE_URL
 from backend.db import Base
-from backend import models_db  # noqa: F401  让 User/Scenario/Game 注册到 metadata
+from backend import models_db  # noqa: F401  registers User/Scenario/Game on the metadata
 
 config = context.config
 

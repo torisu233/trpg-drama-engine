@@ -1,8 +1,8 @@
-"""每拍维护：滚动摘要压缩 / 账本整理。
+"""Per-beat upkeep: rolling summary compression / ledger consolidation.
 
-这两步会调用「会打 Grok」的 agent 函数，用 pytest 内建的 `monkeypatch` 夹具把它们
-换成「替身（fake）」——这是测试隔离外部依赖的标准手法。async 函数直接用 asyncio.run 跑
-（保持简单，不引入 pytest-asyncio 插件）。
+Both steps call agent functions that would hit the LLM; pytest's built-in `monkeypatch` fixture swaps them for
+fakes — the standard way to isolate external dependencies in tests. Async functions run via asyncio.run
+(kept simple, no pytest-asyncio plugin).
 """
 import asyncio
 from backend import flow, agents
@@ -10,65 +10,65 @@ from backend.models import Condition
 
 
 def test_memory_compress(sess, monkeypatch):
-    """记忆达 2W 条时，把最旧 W 条折进摘要（这里 W=5：12 → 折 5 剩 7 + 生成摘要）。"""
-    sess.memory["scar"] = [f"第{i}拍叙事" for i in range(1, 13)]   # 12 条
+    """When memory reaches 2W entries, fold the oldest W into the summary (here W=5: 12 → fold 5, keep 7 + a summary)."""
+    sess.memory["scar"] = [f"beat {i} narration" for i in range(1, 13)]   # 12 entries
 
-    async def fake_sum(grok, s, cid, old, evicted):             # 替身，避免打 API
-        return f"[summary:并入{len(evicted)}条]"
+    async def fake_sum(llm, s, cid, old, evicted):              # fake, avoids calling the API
+        return f"[summary: merged {len(evicted)} entries]"
     monkeypatch.setattr(agents, "summarize_memory", fake_sum)
 
     asyncio.run(flow._maybe_compress(None, sess))
     assert len(sess.memory["scar"]) == 7
-    assert sess.memory["scar"][0] == "第6拍叙事"   # 保留较新的 6~12
+    assert sess.memory["scar"][0] == "beat 6 narration"   # keeps the newer 6-12
     assert sess.summary.get("scar")
 
 
 def test_ledger_consolidate(sess, monkeypatch):
-    """账本整理：公开持久近义条目被合并；gm 条目与带 TTL 的瞬态不被动到。"""
+    """Ledger consolidation: public persistent near-duplicates are merged; gm entries and transients with a TTL are left alone."""
     sess.ledger.scene.social_facts = [
-        Condition(content=f"刀疤要求先还债#{i}", visibility="public") for i in range(5)
+        Condition(content=f"Scar demands the debt be paid first #{i}", visibility="public") for i in range(5)
     ]
-    sess.ledger.scene.social_facts.append(Condition(content="刀疤在等同伙", visibility="gm"))
+    sess.ledger.scene.social_facts.append(Condition(content="Scar is waiting for his accomplices", visibility="gm"))
     sess.ledger.characters["player"].conditions = [
-        Condition(content="瞬态晕眩", visibility="public", ttl=2)
+        Condition(content="momentarily dizzy", visibility="public", ttl=2)
     ]
 
-    async def fake(grok, s, label, conds):
-        return [Condition(content="刀疤要求先清漕帮债务（合并）", visibility="public", source="整理")]
+    async def fake(llm, s, label, conds):
+        return [Condition(content="Scar demands the Canal Gang debt be settled first (merged)", visibility="public", source="consolidated")]
     monkeypatch.setattr(agents, "consolidate_conditions", fake)
 
     asyncio.run(flow._maybe_consolidate(None, sess))
-    社 = [c.content for c in sess.ledger.scene.social_facts]
-    assert "刀疤要求先清漕帮债务（合并）" in 社
-    assert "刀疤在等同伙" in 社                       # gm 不被整理
-    assert len(社) == 2                              # 5 公开合 1 + 保留 gm 1
-    assert len(sess.ledger.characters["player"].conditions) == 1   # 带 TTL 的瞬态不整理
+    social = [c.content for c in sess.ledger.scene.social_facts]
+    assert "Scar demands the Canal Gang debt be settled first (merged)" in social
+    assert "Scar is waiting for his accomplices" in social   # gm entries aren't consolidated
+    assert len(social) == 2                          # 5 public merged into 1 + 1 gm kept
+    assert len(sess.ledger.characters["player"].conditions) == 1   # transients with a TTL aren't consolidated
 
 
 def test_consolidate_state_uses_lower_threshold(sess, monkeypatch):
-    """身心状况用低阈值(2)：2 条近义即合并；1 条不动；场景事实仍用高阈值(4)：3 条不动。"""
-    sess.ledger.characters["scar"].conditions = [          # 2 条公开持久 → 达状态阈值 2
-        Condition(content="恐惧加剧，可能崩溃招供", visibility="public"),
-        Condition(content="被火逼近，惧色更甚", visibility="public"),
+    """Character conditions use the low threshold (2): 2 near-duplicates merge, 1 is left alone; scene facts keep the high threshold (4): 3 are left alone."""
+    sess.ledger.characters["scar"].conditions = [          # 2 public persistent → reaches the state threshold of 2
+        Condition(content="fear intensifying, may break and confess", visibility="public"),
+        Condition(content="the fire draws closer, his fear deepens", visibility="public"),
     ]
-    sess.ledger.characters["aqing"].conditions = [          # 仅 1 条 → 不达阈值 2
-        Condition(content="独一份的状态", visibility="public"),
+    sess.ledger.characters["aqing"].conditions = [          # only 1 → below the threshold of 2
+        Condition(content="a one-of-a-kind state", visibility="public"),
     ]
-    sess.ledger.scene.scene_facts = [                    # 3 条公开持久 → 不达场景阈值 4
-        Condition(content=f"独立环境事实#{i}", visibility="public") for i in range(3)
+    sess.ledger.scene.scene_facts = [                    # 3 public persistent → below the scene threshold of 4
+        Condition(content=f"independent environment fact #{i}", visibility="public") for i in range(3)
     ]
 
     calls = []
-    async def fake(grok, s, label, conds):
+    async def fake(llm, s, label, conds):
         calls.append(label)
-        return [Condition(content="恐惧（已合并）", visibility="public", source="整理")]
+        return [Condition(content="fear (merged)", visibility="public", source="consolidated")]
     monkeypatch.setattr(agents, "consolidate_conditions", fake)
 
     asyncio.run(flow._maybe_consolidate(None, sess))
 
-    assert any("刀疤" in l and "conditions" in l for l in calls)             # 刀疤 2 条 → 触发合并
-    assert [c.content for c in sess.ledger.characters["scar"].conditions] == ["恐惧（已合并）"]
-    assert not any("阿青" in l for l in calls)                            # 阿青 1 条 < 2 → 不触发
+    assert any("Scar" in l and "conditions" in l for l in calls)              # Scar has 2 → triggers a merge
+    assert [c.content for c in sess.ledger.characters["scar"].conditions] == ["fear (merged)"]
+    assert not any("Qing" in l for l in calls)                             # Qing has 1 < 2 → no merge
     assert len(sess.ledger.characters["aqing"].conditions) == 1
-    assert "scene_facts" not in calls                                        # scene_facts 3 < 4 → 不触发
+    assert "scene_facts" not in calls                                        # scene_facts 3 < 4 → no merge
     assert len(sess.ledger.scene.scene_facts) == 3
