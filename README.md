@@ -58,7 +58,7 @@ docker compose up -d --wait      # PostgreSQL for the integration tests (host po
 pytest                           # runs with coverage (see pyproject.toml)
 ```
 
-**Strategy: test the deterministic machine exhaustively; isolate the non-deterministic LLM.** No test calls a real model, so the suite runs offline and CI needs no secrets.
+**Strategy: test the deterministic machine exhaustively; isolate the non-deterministic LLM.** No test calls a real model, so the suite runs offline and CI needs no secrets. Current CI run: **113 tests, 88% line coverage** of `backend/` (live diagnostic scripts excluded).
 
 | Layer | Files | What it covers |
 |---|---|---|
