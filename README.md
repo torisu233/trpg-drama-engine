@@ -105,7 +105,7 @@ uvicorn backend.main:app --reload --port 8100         # API + Swagger UI at http
 cd frontend && npm install && npm run dev             # http://localhost:5173 (proxies /api to 8100)
 ```
 
-Register an account, create a scenario on the authoring page (chat with the authoring agent or fill in the panel; [the reference scenario](scenarios/example-fantasy-broken-sword-inn.json) shows every field populated), then play.
+Register an account, create a scenario on the authoring page (chat with the authoring agent or fill in the panel), then play. [`scenarios/greywater-bridge.json`](scenarios/greywater-bridge.json) is a compact demo scenario you can load through the API, and [the reference scenario](scenarios/example-fantasy-broken-sword-inn.json) shows every field populated.
 
 ## How the engine works
 

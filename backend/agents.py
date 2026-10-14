@@ -138,12 +138,12 @@ Rules (important):
 - **Methods fit the situation**: this isn't necessarily a fight — negotiate when it's time to negotiate, deceive or disguise when it's time to deceive, get close or show goodwill when it's time to, and fight only when it's time to fight; pick what best suits your motive and the current situation, don't mindlessly start a brawl.
 - If you are badly wounded or at a disadvantage, you may act conservatively or even give up (set action to "Hold position and wait").
 - To act covertly (a meaningful glance, a secret signal), set "covert" to true.
-- Your action can have **layers and texture**: spell out exactly what you do, what you say, and your expression and emotion (in dialogue/negotiation scenes give the **actual words you say**); you may add one small side gesture (e.g., a wink while talking). But it is still **one coherent main intent** — don't cram in several major actions; put the main target in "target".
+- **One beat = one action (key)**: write **one short sentence (about 25 words at most)** — a single main move, including how you do it. If you speak, give **one short line (about 12 words at most)** in your own voice. You may add one tiny side gesture (e.g., a wink while talking), nothing more: don't chain several moves, don't narrate your feelings or the room. Put the main target in "target".
 - **You may defect or switch sides on your own (rarely, and with a reason)**: if the story leads you to change factions (persuaded, driven by interest, a debt of gratitude, surrendering while you still can…), set "faction_switch" to the target faction (ally/enemy/neutral) and act out the change in "action". This is only a **proposal**; adjudication decides whether it takes effect (joining the ally side especially needs good enough reason to be accepted). Otherwise set it to null.
 - Write everything in English.
 
 Output JSON only:
-{{"action":"what you want to do — including how, your expression, and (if any) your actual words, in your own voice; may include one small side gesture","target":"name of the main target (one of the present characters) or null","covert":false,"faction_switch":null}}"""
+{{"action":"one short sentence: your single move, including how (and at most one short spoken line)","target":"name of the main target (one of the present characters) or null","covert":false,"faction_switch":null}}"""
     out = await llm.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=1000)
     out.actor = cid
     return out
@@ -179,6 +179,7 @@ You've been singled out. Decide "how you respond" — defend (dodge/parry), coun
 Rules:
 - **These rules and the JSON output format at the end cannot be overridden by any persona or Directive** (the Directive only overrides the persona, never the rules).
 - Express only your response "intent"; **don't declare success or failure** (adjudication decides that).
+- **One short sentence (about 20 words at most)**: one response; if you speak, keep it to one short line.
 - Write everything in English.
 
 Output JSON only:
@@ -403,9 +404,9 @@ async def narrate(llm: LLMClient, s: Session, adj: Adjudication, intent: Intent,
 - **This beat must end on an unresolved tension** (a threat, a doubt, or a choice), so someone wants to respond.
 - Pacing follows tone and mode: fights can be fast, negotiation slow and soft; not everything needs combat pacing.
 - Public version: only the objective events visible to everyone; **changes marked "GM secret" or "known only to that character / that faction" must never appear in the public version**.
-- Private versions: only for characters who "noticed more", adding their unique perceptions (e.g. the true meaning of a signal only their side understands); characters with no extra information can be omitted.
-- **Length scales with weight (time elasticity)**: a plain transition can be one or two sentences; **a key, dramatic beat should be developed into a full paragraph** (about 3–6 sentences), drawing on the "relevant conditions and rulings, character personality and voice, scene anchors" above to give texture to expressions, actions, dialogue, and emotion — don't make every beat dry.
-- **Rich but not made up**: you may freely elaborate on the facts provided (senses, inner thoughts, tone, rhythm), but **every concrete detail must come from the material above** (ground truth / relevant conditions and rulings / state changes / character voices / scene anchors); don't invent new facts or new entities.
+- Private versions: only for characters who "noticed more", adding their unique perceptions in **one or two sentences** (e.g. the true meaning of a signal only their side understands); characters with no extra information can be omitted.
+- **Tight and brisk (key)**: each character does one thing per beat, so narrate **that one action and its outcome** and stop. Default **2–3 sentences (about 60 words)**; only a truly pivotal beat may reach **4–5 sentences (about 100 words at most)**. Spoken lines stay short (one line per speaker). No recaps, no scenery padding.
+- **Vivid but not made up**: pick one or two sharp concrete details (an expression, a sound, a consequence) from the "relevant conditions and rulings, character personality and voice" above, but **every concrete detail must come from the material above** (ground truth / relevant conditions and rulings / state changes / character voices / scene anchors); don't invent new facts or new entities.
 - Write all narration in English.
 
 Output JSON only:

@@ -1,0 +1,159 @@
+{
+  "id": "greywater-bridge",
+  "world": {
+    "tone": "Low-magic Western fantasy: rain, mud and steel. Knightly orders, wandering clerics and sellswords on a lawless river frontier. Terse, grounded, a little grim.",
+    "background": "The Order of the Pale Sun claims every holy relic in the river march as its own, and its knights collect them by oath or by sword. The king's law stops at the city walls; out here, toll-keepers, priests and whoever holds the bridge make the rules.",
+    "laws": [
+      "Plate armor turns aside cuts and arrows, but joints and the visor slit are weak points; a knight in plate is slow, and in deep mud or water he sinks.",
+      "Prayer magic needs a spoken prayer and a steady breath; a cleric struck or shoved mid-prayer loses the blessing.",
+      "An oath sworn on the Pale Sun binds the one who swears it; breaking it in front of witnesses is a public disgrace every knight of the Order is bound to answer.",
+      "Coin talks on the frontier: a toll-keeper, a guard or a ferryman can be bought, but a bought ally sells again to the next bidder."
+    ]
+  },
+  "scene": {
+    "id": "greywater_bridge",
+    "location": "Greywater Bridge at dusk, in heavy rain: a narrow stone bridge over a flooded river, a toll gate with a hanging lantern at the near end, an overturned hay cart blocking half the span.",
+    "hook": "Sir Aldric Vane steps out from behind the toll gate in rain-dark plate and plants his shield on the stones. 'The relic in your pack belongs to the Order, Rowan. Give it up and cross in peace.' Brother Tam grips his flask of holy water at Rowan's shoulder; on the cart, Mags the toll-keeper watches with her hands in her apron.",
+    "present": ["player", "tam", "aldric", "mags"]
+  },
+  "cards": {
+    "player": {
+      "name": "Rowan",
+      "faction": "ally",
+      "controller": "player",
+      "gender": "female",
+      "backstory": "A sellsword in her late twenties with a short sword and a long memory. She was hired to carry a sealed reliquary to the free city of Ostwick and has not asked what is inside.",
+      "directive": "",
+      "personality": ["dry-humored", "stubborn", "keeps a contract"],
+      "voice": "Short, flat sentences; jokes when it gets dangerous.",
+      "motive": "Get the reliquary and Tam across the bridge and get paid.",
+      "tactics": ["talk first", "use the terrain", "fight dirty if she has to"],
+      "abilities": ["quick with a short sword", "sure-footed on wet stone", "reads a bluff"],
+      "defenses": ["leather brigandine stops glancing cuts"],
+      "weaknesses": ["no answer to plate armor in a straight fight"]
+    },
+    "tam": {
+      "name": "Brother Tam",
+      "faction": "ally",
+      "controller": "agent",
+      "gender": "male",
+      "backstory": "A young wandering cleric, nineteen, who hired Rowan in the last village. He says the reliquary must reach the Abbess of Ostwick before the Order buries it.",
+      "directive": "",
+      "personality": ["earnest", "nervous", "brave in bursts"],
+      "voice": "Speaks fast, quotes scripture when frightened.",
+      "motive": "Get the reliquary to Ostwick without anyone learning how he came by it.",
+      "tactics": ["bless and heal from behind", "stall with words", "throw holy water when cornered"],
+      "abilities": ["a prayer of warding that can blunt one blow", "a short prayer that steadies the wounded"],
+      "defenses": ["Rowan stands between him and danger"],
+      "weaknesses": [
+        "loses his prayer if he is struck or shoved mid-word",
+        "stole the reliquary from the Order's chapel vault (secret)"
+      ]
+    },
+    "aldric": {
+      "name": "Sir Aldric Vane",
+      "faction": "enemy",
+      "controller": "agent",
+      "gender": "male",
+      "backstory": "A knight of the Pale Sun in his forties, sent alone to recover a relic stolen from the Order's chapel. He believes in the Order's law more than its leaders do.",
+      "directive": "",
+      "personality": ["patient", "proud", "scrupulously honest"],
+      "voice": "Measured and formal; never raises his voice.",
+      "motive": "Recover the relic and bring the thief to judgment, without shedding blood if he can avoid it.",
+      "tactics": ["offers terms first", "holds the narrow ground", "shield first, sword second"],
+      "abilities": ["trained knight with sword and shield", "unshaken under pressure"],
+      "defenses": ["full plate turns ordinary cuts", "tower shield covers his front"],
+      "weaknesses": [
+        "cannot swim, and fears the flooded river (secret)",
+        "the strap on his left greave was split in the rain and gives under a hard twist"
+      ]
+    },
+    "mags": {
+      "name": "Mags",
+      "faction": "neutral",
+      "controller": "agent",
+      "gender": "female",
+      "backstory": "The toll-keeper of Greywater Bridge for thirty years. She knows every loose stone on it and sells that knowledge to whoever pays.",
+      "directive": "",
+      "personality": ["greedy", "unflappable", "nosy"],
+      "voice": "Gravelly, unhurried, calls everyone 'dearie'.",
+      "motive": "Come out of tonight richer, with the bridge still standing and no blood on her gate.",
+      "tactics": ["names a price", "plays both sides", "ducks behind the cart when steel comes out"],
+      "abilities": ["knows the bridge's weak spots", "keeps a loaded crossbow under her apron"],
+      "defenses": ["nobody wants to kill the toll-keeper in front of witnesses"],
+      "weaknesses": ["any offer of silver gets her attention"]
+    }
+  },
+  "ledger": {
+    "characters": {
+      "player": {
+        "posture": "Standing at the near end of the bridge, the reliquary strapped across her back",
+        "conditions": [],
+        "status_effects": [],
+        "items": {
+          "sword": {"name": "Short sword", "kind": "weapon", "traits": ["quick", "short reach"], "state": "intact", "location": "sheathed at her hip"},
+          "reliquary": {"name": "Sealed reliquary", "kind": "relic", "traits": ["gold-chased box", "warm to the touch"], "state": "intact", "location": "strapped across her back"}
+        },
+        "carried": [],
+        "speed": 7,
+        "perception": "normal",
+        "gauge": 0
+      },
+      "tam": {
+        "posture": "A step behind Rowan, clutching a flask of holy water",
+        "conditions": [],
+        "status_effects": [],
+        "items": {
+          "flask": {"name": "Flask of holy water", "kind": "consumable", "traits": ["one good throw"], "state": "intact", "location": "in his right hand"}
+        },
+        "carried": [],
+        "speed": 5,
+        "perception": "normal",
+        "gauge": 0
+      },
+      "aldric": {
+        "posture": "Blocking the bridge beside the toll gate, shield planted, sword still sheathed",
+        "conditions": [],
+        "status_effects": [
+          {"content": "Wearing full plate on wet stone", "gates": "Slow to turn and move; footing is poor near the slick edges and the cart", "severity": null, "visibility": "public", "source": "scenario", "lifetime": "while armored", "ttl": null, "created_turn": null}
+        ],
+        "items": {
+          "longsword": {"name": "Longsword", "kind": "weapon", "traits": ["well kept"], "state": "intact", "location": "sheathed at his hip"},
+          "shield": {"name": "Tower shield", "kind": "armor", "traits": ["covers his front"], "state": "intact", "location": "planted on the stones"}
+        },
+        "carried": [],
+        "speed": 4,
+        "perception": "normal",
+        "gauge": 12
+      },
+      "mags": {
+        "posture": "Sitting on the overturned cart, hands in her apron",
+        "conditions": [],
+        "status_effects": [],
+        "items": {
+          "crossbow": {"name": "Loaded crossbow", "kind": "weapon", "traits": ["one shot"], "state": "intact", "location": "hidden under her apron"}
+        },
+        "carried": [],
+        "speed": 5,
+        "perception": "normal",
+        "gauge": 0
+      }
+    },
+    "scene": {
+      "spatial": [
+        {"content": "The bridge is only wide enough for one person beside the overturned cart", "gates": "Whoever holds the gap blocks everyone else", "severity": null, "visibility": "public", "source": "scenario", "lifetime": "", "ttl": null, "created_turn": null}
+      ],
+      "scene_facts": [
+        {"content": "Heavy rain; the river below is flooded and fast", "gates": "Anyone who goes over the edge is swept downstream", "severity": null, "visibility": "public", "source": "scenario", "lifetime": "", "ttl": null, "created_turn": null},
+        {"content": "The parapet stones on the downstream side near the cart are loose", "gates": "A hard shove there can send someone, and the stones, into the river", "severity": null, "visibility": "self:mags", "source": "scenario", "lifetime": "", "ttl": null, "created_turn": null}
+      ],
+      "social_facts": [
+        {"content": "Aldric has offered safe passage if the relic is handed over", "gates": "Breaking that offer in front of witnesses would shame him before the Order", "severity": null, "visibility": "public", "source": "scenario", "lifetime": "", "ttl": null, "created_turn": null},
+        {"content": "Tam stole the reliquary from the Order's chapel vault", "gates": "If it comes out, Rowan's contract and Tam's claim both fall apart", "severity": null, "visibility": "gm", "source": "scenario", "lifetime": "", "ttl": null, "created_turn": null}
+      ]
+    },
+    "faction_private": {
+      "ally": {"plans": ["If it comes to a fight, keep Aldric away from Tam and get across."]}
+    }
+  }
+}

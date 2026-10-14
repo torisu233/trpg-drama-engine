@@ -6,6 +6,9 @@ No code reads the `*.json` files in this directory. On first startup the databas
 
 The files here are purely **reference samples for developers (and AI assistants)** that show the full JSON shape of a scenario. To actually play one, save its content to the database through the authoring page or API; leaving it in this directory does nothing.
 
+## Compact demo scenario
+[`greywater-bridge.json`](greywater-bridge.json) is a short Western-fantasy standoff built for demos: a sellsword and a young cleric carrying a relic, a knight of the Pale Sun blocking a flooded bridge, and a toll-keeper who sells to the highest bidder. It shows how the pieces interlock: a world law (plate sinks in deep water), a secret weakness (the knight can't swim), a fact only one character knows (loose parapet stones, `self:mags`) and a GM-only secret (who really stole the relic).
+
 ## Full field reference
 [`example-fantasy-broken-sword-inn.json`](example-fantasy-broken-sword-inn.json) deliberately **uses every field**, so it works as a template for writing scenarios:
 - `CharCard`: every role-play and adjudication field, including `directive` (a user-written, highest-priority character rule that is only fed to the character agent);
