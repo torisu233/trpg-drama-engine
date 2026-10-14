@@ -36,7 +36,7 @@ async def main():
 
     print("\n" + "═" * 64, "\n最终剧本摘要：")
     print(agents._scenario_brief(sc))
-    print("\n角色卡 ids：", list(sc.角色卡.keys()), "｜在场：", sc.scene.在场)
+    print("\n角色卡 ids：", list(sc.cards.keys()), "｜present：", sc.scene.present)
     print("\n完整 JSON（前 2200 字）：")
     print(sc.model_dump_json(indent=2)[:2200])
     await grok.close()

@@ -24,7 +24,7 @@ def create_game(db, s: Session, user_id: int, scenario_id=None) -> str:
     不完整剧本直接 400、不留孤儿 Game 行。"""
     gid = _new_id()
     db.add(Game(id=gid, user_id=user_id, scenario_id=scenario_id,
-                state=_dump(s), turn_count=s.回合数, ended=s.结束))
+                state=_dump(s), turn_count=s.turn, ended=s.ended))
     db.commit()
     return gid
 
@@ -46,8 +46,8 @@ def save_game(db, gid: str, s: Session) -> None:
     if not row:
         return
     row.state = _dump(s)
-    row.turn_count = s.回合数
-    row.ended = s.结束
+    row.turn_count = s.turn
+    row.ended = s.ended
     db.commit()
 
 
@@ -69,7 +69,7 @@ def list_games(db, user: User) -> list:
     if user.is_admin and rows:
         ids = {r.user_id for r in rows}
         owners = {u.id: u.username for u in db.query(User).filter(User.id.in_(ids))}
-    # 剧本名：经 scenario_id 关联 title（含已软删的剧本仍可取名）
+    # scenario_name：经 scenario_id 关联 title（含已软删的剧本仍可取名）
     titles = {}
     sids = {r.scenario_id for r in rows if r.scenario_id}
     if sids:
@@ -79,10 +79,10 @@ def list_games(db, user: User) -> list:
         scene = (r.state or {}).get("scene", {})
         out.append({
             "game_id": r.id,
-            "剧本名": titles.get(r.scenario_id) or scene.get("地点", "") or r.id,
-            "地点": scene.get("地点", ""),
-            "回合数": r.turn_count,
-            "结束": r.ended,
+            "scenario_name": titles.get(r.scenario_id) or scene.get("location", "") or r.id,
+            "location": scene.get("location", ""),
+            "turn": r.turn_count,
+            "ended": r.ended,
             "owner": owners.get(r.user_id) if user.is_admin else None,
         })
     return out
@@ -93,18 +93,18 @@ def _action_bar(s: Session) -> list:
     """各角色行动值与预估还要几拍才行动；最接近行动者排最上面。"""
     th = config.ACTION_THRESHOLD
     bars = []
-    for cid in s.scene.在场:
-        cl = s.会变层.角色.get(cid)
+    for cid in s.scene.present:
+        cl = s.ledger.characters.get(cid)
         if not cl:
             continue
-        速 = max(cl.行动速度, 1)
-        需 = max(th - cl.行动值, 0)
+        速 = max(cl.speed, 1)
+        需 = max(th - cl.gauge, 0)
         bars.append({
-            "id": cid, "名": s.角色卡[cid].名, "阵营": s.角色卡[cid].阵营,
-            "行动值": cl.行动值, "速度": cl.行动速度, "门槛": th,
-            "预估拍": (需 + 速 - 1) // 速,
+            "id": cid, "name": s.cards[cid].name, "faction": s.cards[cid].faction,
+            "gauge": cl.gauge, "速度": cl.speed, "threshold": th,
+            "beats": (需 + 速 - 1) // 速,
         })
-    bars.sort(key=lambda b: (b["预估拍"], -b["行动值"]))
+    bars.sort(key=lambda b: (b["beats"], -b["gauge"]))
     return bars
 
 
@@ -112,17 +112,17 @@ def snapshot(gid: str, s: Session) -> dict:
     from . import engine
     return {
         "game_id": gid,
-        "回合数": s.回合数,
-        "结束": s.结束,
+        "turn": s.turn,
+        "ended": s.ended,
         "pending": s.pending,
-        "进行中": s.进行中,
-        "公开日志": s.公开日志,
-        "日志": s.日志,
-        "在场": [{"id": cid, "名": s.角色卡[cid].名, "阵营": s.角色卡[cid].阵营,
-                  "扮演": s.角色卡[cid].扮演}
-                 for cid in s.scene.在场 if cid in s.角色卡],
-        "行动条": _action_bar(s),
-        "局面": engine.player_situation(s),
-        "角色": engine.known_characters(s),
-        "账本调试": engine.ground_truth(s),
+        "in_progress": s.in_progress,
+        "public_log": s.public_log,
+        "log": s.log,
+        "present": [{"id": cid, "name": s.cards[cid].name, "faction": s.cards[cid].faction,
+                  "controller": s.cards[cid].controller}
+                 for cid in s.scene.present if cid in s.cards],
+        "action_bar": _action_bar(s),
+        "situation": engine.player_situation(s),
+        "characters": engine.known_characters(s),
+        "ledger_debug": engine.ground_truth(s),
     }

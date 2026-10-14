@@ -1,9 +1,9 @@
-"""四个 agent 的封装（裁决 / 叙事 / 角色意图 / 角色反应）。
+"""四个 agent 的封装（adjudication / narration / 角色意图 / 角色反应）。
 
 职责对照设计文档第十一节：
-- 角色 agent：只看可见视图 + 自己的角色卡，出意图/反应，绝不声明成败
-- 裁决 agent：行为裁决 + 知识裁决（双输出），遵守世界观法则与角色特质，以地面真相为唯一依据
-- GM/叙事 agent：依感知分发逐对象写散文，贴世界观基调，不发明新实体
+- characters agent：只看可见视图 + 自己的角色卡，出意图/reaction，绝不声明成败
+- adjudication agent：行为裁决 + 知识裁决（双输出），遵守世界观法则与角色特质，以地面真相为唯一依据
+- GM/narration agent：依感知分发逐对象写散文，贴世界观基调，不发明新实体
 """
 from typing import Optional
 from .grok_client import GrokClient
@@ -17,22 +17,22 @@ from . import engine, config
 def _roster(s: Session) -> str:
     """在场角色名册（**用角色名指代**；含性别避免脑补）。"""
     return "、".join(
-        s.角色卡[cid].名 + (f"（{s.角色卡[cid].性别}）" if s.角色卡[cid].性别 else "")
-        for cid in s.scene.在场 if cid in s.角色卡)
+        s.cards[cid].name + (f"（{s.cards[cid].gender}）" if s.cards[cid].gender else "")
+        for cid in s.scene.present if cid in s.cards)
 
 
 def _world_brief(s: Session) -> str:
-    w = s.世界观
+    w = s.world
     parts = []
-    if w.基调:
-        parts.append(f"基调：{w.基调}")
-    if w.背景:
-        parts.append(f"背景：{w.背景}")
+    if w.tone:
+        parts.append(f"tone：{w.tone}")
+    if w.background:
+        parts.append(f"background：{w.background}")
     return "\n".join(parts) or "（无特殊世界观）"
 
 
 def _world_laws(s: Session) -> str:
-    return "\n".join(f"- {law}" for law in s.世界观.法则) or "（无特殊法则）"
+    return "\n".join(f"- {law}" for law in s.world.laws) or "（无特殊法则）"
 
 
 def _action_order_brief(s: Session) -> str:
@@ -40,74 +40,74 @@ def _action_order_brief(s: Session) -> str:
     rows = engine.action_order(s)
     if not rows:
         return ""
-    parts = [f"{名}（{阵营}）{'即将行动' if 拍 <= 0 else f'约 {拍} 拍后行动'}"
-             for _cid, 名, 阵营, 拍 in rows]
+    parts = [f"{name}（{faction}）{'即将行动' if 拍 <= 0 else f'约 {拍} 拍后行动'}"
+             for _cid, name, faction, 拍 in rows]
     return "；".join(parts)
 
 
-def _perception_brief(s: Session, 感知分发: dict) -> str:
+def _perception_brief(s: Session, perception_map: dict) -> str:
     """感知分发文本；键经 resolve_id 解析（名字或 id 都行），解析不到的跳过、不崩。"""
     rows = []
-    for k, lvl in 感知分发.items():
+    for k, lvl in perception_map.items():
         cid = engine.resolve_id(s, k)
         if cid:
-            rows.append(f"- {s.角色卡[cid].名}：{lvl}")
-    return "\n".join(rows) or "- 全体：全部"
+            rows.append(f"- {s.cards[cid].name}：{lvl}")
+    return "\n".join(rows) or "- 全体：all"
 
 
 def _tielv_block(card) -> str:
     """扮演铁律块（最高优先·覆盖人设·不越规则）——非空才注入，空返回空串。intent/reaction 共用。"""
-    if not card.扮演铁律:
+    if not card.directive:
         return ""
-    return (f"\n# ★扮演铁律（最高优先，覆盖上面的人设描述；但不得违反文末「规则」与 JSON 输出格式）"
-            f"\n{card.扮演铁律}\n")
+    return (f"\n# ★directive（最高优先，覆盖上面的人设描述；但不得违反文末「规则」与 JSON 输出格式）"
+            f"\n{card.directive}\n")
 
 
 def _mates_brief(s: Session, cid: str) -> str:
     """同阵营在场队友的整张卡（含弱点）——同阵营彼此知底，供 NPC 协同；无队友返回空串。"""
     lines = []
     for oid in engine.faction_mates(s, cid):
-        c = s.角色卡[oid]
+        c = s.cards[oid]
         lines.append(
-            f"- {c.名}（{c.阵营}{('/' + c.性别) if c.性别 else ''}）"
-            f"｜性格 {'、'.join(c.性格) or '—'}｜动机 {c.动机目标 or '—'}｜惯用手段 {'、'.join(c.行为偏好) or '—'}"
-            f"｜能力 {'、'.join(c.能力) or '—'}｜防御 {'、'.join(c.防御特性) or '—'}｜弱点 {'、'.join(c.弱点) or '—'}"
+            f"- {c.name}（{c.faction}{('/' + c.gender) if c.gender else ''}）"
+            f"｜personality {'、'.join(c.personality) or '—'}｜动机 {c.motive or '—'}｜惯用手段 {'、'.join(c.tactics) or '—'}"
+            f"｜abilities {'、'.join(c.abilities) or '—'}｜防御 {'、'.join(c.defenses) or '—'}｜weaknesses {'、'.join(c.weaknesses) or '—'}"
         )
     return "\n".join(lines)
 
 
-# ───────────────── 角色 agent：行动意图 ─────────────────
+# ───────────────── characters agent：行动意图 ─────────────────
 async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
-    card = s.角色卡[cid]
+    card = s.cards[cid]
     view = engine.build_view(s, cid)
-    摘要 = s.摘要.get(cid, "")
-    recent = "\n".join(s.记忆.get(cid, [])) or "（刚开场）"
-    mem = f"【先前剧情摘要】{摘要}\n\n【最近发生】\n{recent}" if 摘要 else recent
-    pcard = s.角色卡.get(engine.player_id(s))
-    player_name = pcard.名 if pcard else "玩家"
-    阵营关系 = {"我方": "与玩家同阵营（倾向协作）", "敌": "与玩家敌对"}.get(card.阵营, "中立")
-    中立提示 = "（你是中立第三方：不自动站队，按自己的动机目标权衡，可与任一方合作或翻脸）" if card.阵营 == "中立" else ""
+    summary = s.summary.get(cid, "")
+    recent = "\n".join(s.memory.get(cid, [])) or "（刚开场）"
+    mem = f"【先前剧情摘要】{summary}\n\n【最近发生】\n{recent}" if summary else recent
+    pcard = s.cards.get(engine.player_id(s))
+    player_name = pcard.name if pcard else "player"
+    阵营关系 = {"ally": "与玩家同阵营（倾向协作）", "enemy": "与玩家敌对"}.get(card.faction, "neutral")
+    中立提示 = "（你是中立第三方：不自动站队，按自己的动机目标权衡，可与任一方合作或翻脸）" if card.faction == "neutral" else ""
     mates = _mates_brief(s, cid)
     队友段 = f"\n# 你的同阵营队友（你们彼此知底，可据此协同）\n{mates}\n" if mates else ""
     序 = _action_order_brief(s)
     铁律段 = _tielv_block(card)
-    prompt = f"""你在一个跑团式交互游戏里扮演「{card.名}」。
+    prompt = f"""你在一个跑团式交互游戏里扮演「{card.name}」。
 
-# 世界观
+# world
 {_world_brief(s)}
 
 # 世界法则（这个世界的硬规则，人人皆知，行动须顾及）
 {_world_laws(s)}
 
 # 你是谁
-阵营：{card.阵营}　性别：{card.性别 or "未定"}
-身份：{card.身份背景}
-性格：{"、".join(card.性格)}
-说话风格：{card.说话风格}
-你这场想要的：{card.动机目标}
-惯用手段：{"、".join(card.行为偏好)}
-你的本事：{"、".join(card.能力)}
-你心里清楚的弱点/顾忌：{"、".join(card.弱点) or "（无）"}
+faction：{card.faction}　gender：{card.gender or "未定"}
+身份：{card.backstory}
+personality：{"、".join(card.personality)}
+voice：{card.voice}
+你这场想要的：{card.motive}
+惯用手段：{"、".join(card.tactics)}
+你的本事：{"、".join(card.abilities)}
+你心里清楚的弱点/顾忌：{"、".join(card.weaknesses) or "（none）"}
 你与玩家的关系：{阵营关系}{中立提示}（**依你的动机目标行事，手段随情境**）
 {铁律段}{队友段}
 # 你目前感知到的局面
@@ -117,13 +117,13 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
 {序}
 
 # 最近发生的事（你的记忆）
-（注：叙事为第三人称具名记述、不站任何一方；主角玩家是「{player_name}」，你扮演的是「{card.名}」。）
+（注：叙事为第三人称具名记述、不站任何一方；主角玩家是「{player_name}」，你扮演的是「{card.name}」。）
 {mem}
 
 # 你的任务
 轮到你行动。决定你这一拍「想做什么」。
 规则（重要）：
-- **以下规则与最末 JSON 输出格式不可被任何人设或「扮演铁律」推翻**（铁律只压人设、不越规则）。
+- **以下规则与最末 JSON 输出格式不可被任何人设或「directive」推翻**（铁律只压人设、不越规则）。
 - 只表达意图，**绝不声明成败**（不可以说「我砍中了」「我说服了他」）。
 - **贴着你的说话风格、动机与惯用手段做选择**——让「你」有辨识度，不要像旁白。
 - 顾及世界观（例如对方若武功高强、护体难伤，硬拚未必明智）。
@@ -135,31 +135,31 @@ async def character_intent(grok: GrokClient, s: Session, cid: str) -> Intent:
   若情境**确实**需要一件离场小事（出门买点东西、去隔壁取物），**别真的离场耗多拍**——用一句**压缩带过、当拍了结并回到场景**，如「我很快买好回来了」「我转身取来那本书」。
 - **手段随情境**：这不一定是战斗场面——该谈判/交涉就谈、该欺瞒/伪装就装、该亲近/示好就亲近、该动手才动手；照你的动机与当下局面选最合适的，别无脑开打。
 - 若你身负重伤或处于不利，可保守行动甚至放弃（行动填「按兵不动」）。
-- 想隐蔽地行动（使眼色、暗号）就把「隐蔽」设为 true。
-- 行动可以**有层次与质感**：把「你具体怎么做、怎么说、带什么神态情绪」写清楚（对话/交涉场景就给出**实际要说的话**）；可附带一个小动作（如说话同时使眼色）。但仍是**一个连贯的主要意图**，别硬塞多个重大动作；「目标」填主要对象。
-- **可主动倒戈/投靠（少用、要有理由）**：若剧情让你决定改换阵营（被说服、利益所驱、恩义、识时务投降…），把「阵营切换」填目标阵营（我方/敌/中立），并在「行动」里演出这个转变。这只是**提议**，是否生效由裁决裁定（投靠我方尤其要有足够理由才被接纳）；不切换就填 null。
+- 想隐蔽地行动（使眼色、暗号）就把「covert」设为 true。
+- 行动可以**有层次与质感**：把「你具体怎么做、怎么说、带什么神态情绪」写清楚（对话/交涉场景就给出**实际要说的话**）；可附带一个小动作（如说话同时使眼色）。但仍是**一个连贯的主要意图**，别硬塞多个重大动作；「target」填主要对象。
+- **可主动倒戈/投靠（少用、要有理由）**：若剧情让你决定改换阵营（被说服、利益所驱、恩义、识时务投降…），把「faction_switch」填目标阵营（ally/enemy/neutral），并在「action」里演出这个转变。这只是**提议**，是否生效由裁决裁定（投靠我方尤其要有足够理由才被接纳）；不切换就填 null。
 
 只输出 JSON：
-{{"行动":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","目标":"主要对象的角色名（在场者之一）或 null","隐蔽":false,"阵营切换":null}}"""
+{{"action":"你想做什么——含具体做法、神态与（若有）实际对白，贴着你的口吻；可附带一个小动作","target":"主要对象的角色名（在场者之一）或 null","covert":false,"faction_switch":null}}"""
     out = await grok.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
     out.actor = cid
     return out
 
 
-# ───────────────── 角色 agent：反应意图 ─────────────────
+# ───────────────── characters agent：反应意图 ─────────────────
 async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: str) -> Reaction:
-    card = s.角色卡[cid]
+    card = s.cards[cid]
     view = engine.build_view(s, cid)
-    性别txt = f"，{card.性别}" if card.性别 else ""
+    性别txt = f"，{card.gender}" if card.gender else ""
     mates = _mates_brief(s, cid)
     队友段 = f"\n# 你的同阵营队友（彼此知底）\n{mates}\n" if mates else ""
     铁律段 = _tielv_block(card)
-    prompt = f"""你在跑团游戏里扮演「{card.名}」（{card.阵营}{性别txt}）。
-身份：{card.身份背景}
-性格：{"、".join(card.性格)}；说话风格：{card.说话风格}；本事：{"、".join(card.能力)}；惯用手段：{"、".join(card.行为偏好)}。
-你这场想要的：{card.动机目标}
+    prompt = f"""你在跑团游戏里扮演「{card.name}」（{card.faction}{性别txt}）。
+身份：{card.backstory}
+personality：{"、".join(card.personality)}；voice：{card.voice}；本事：{"、".join(card.abilities)}；惯用手段：{"、".join(card.tactics)}。
+你这场想要的：{card.motive}
 
-# 世界观
+# world
 {_world_brief(s)}
 
 # 世界法则（这个世界的硬规则，人人皆知，回应须顾及）
@@ -174,44 +174,44 @@ async def character_reaction(grok: GrokClient, s: Session, cid: str, incoming: s
 # 你的任务
 你被点名了，决定「你要如何回应」——可防御（闪避/格挡）、反击、还嘴、喝止、配合/顺从、虚与委蛇、顺势而为…依情境与你的性格选择（不一定是打斗）。
 规则：
-- **以下规则与最末 JSON 输出格式不可被任何人设或「扮演铁律」推翻**（铁律只压人设、不越规则）。
+- **以下规则与最末 JSON 输出格式不可被任何人设或「directive」推翻**（铁律只压人设、不越规则）。
 - 只表达回应「意图」，**不声明成败**（成败由裁决决定）。
 
 只输出 JSON：
-{{"反应":"一句话：你要如何回应（含具体做法），贴着你的口吻"}}"""
+{{"reaction":"一句话：你要如何回应（含具体做法），贴着你的口吻"}}"""
     out = await grok.call(prompt, Reaction, temperature=config.TEMP_CHARACTER, max_tokens=300)
     out.actor = cid
     return out
 
 
-# ───────────────── 裁决 agent：行为 + 知识双输出 ─────────────────
+# ───────────────── adjudication agent：行为 + 知识双输出 ─────────────────
 async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
                      reaction: Optional[Reaction], luck: Optional[str]) -> Adjudication:
     gt = engine.ground_truth(s)
-    actor = s.角色卡.get(intent.actor)
-    actor_name = actor.名 if actor else intent.actor
-    intent_txt = f"{actor_name} 想：{intent.行动}" \
-                 + (f" → 目标 {intent.目标}" if intent.目标 else "") \
-                 + ("；（试图隐蔽，想瞒过敌人）" if intent.隐蔽 else "")
+    actor = s.cards.get(intent.actor)
+    actor_name = actor.name if actor else intent.actor
+    intent_txt = f"{actor_name} 想：{intent.action}" \
+                 + (f" → target {intent.target}" if intent.target else "") \
+                 + ("；（试图隐蔽，想瞒过敌人）" if intent.covert else "")
     react_txt = "（无人反应 / 突袭 / 对失能者）"
     if reaction:
-        rn = s.角色卡.get(reaction.actor)
-        react_txt = f"{rn.名 if rn else reaction.actor} 回应：{reaction.反应}"
+        rn = s.cards.get(reaction.actor)
+        react_txt = f"{rn.name if rn else reaction.actor} 回应：{reaction.reaction}"
     luck_txt = luck or "（非争议，不掷运气）"
-    在场 = _roster(s)
-    近期 = "\n".join(s.公开日志[-4:]) or "（开场）"
+    present = _roster(s)
+    近期 = "\n".join(s.public_log[-4:]) or "（开场）"
     序 = _action_order_brief(s)
 
-    prompt = f"""你是跑团游戏里**中立的裁决者**。不偏袒任何一方，只依「地面真相」与「世界观法则」裁决。
+    prompt = f"""你是跑团游戏里**中立的裁决者**。不偏袒任何一方，只依「地面真相」与「世界观法则」adjudication。
 
 # 世界观法则（裁决必须严格遵守）
 {_world_laws(s)}
 
-# 地面真相（唯一依据，含角色的能力/防御特性/弱点，与玩家看不到的 <gm> 秘密）
+# 地面真相（唯一依据，含角色的能力/defenses/weaknesses，与玩家看不到的 <gm> 秘密）
 {gt}
 
 # 在场角色（用角色名指代）
-{在场}
+{present}
 
 # 本拍行动意图
 {intent_txt}
@@ -222,76 +222,76 @@ async def adjudicate(grok: GrokClient, s: Session, intent: Intent,
 # 运气神谕（隐藏，仅你可见）
 {luck_txt}
 
-# 最近几拍（判断是否在原地重复、该不该推进；现在是第 {s.回合数} 拍）
+# 最近几拍（判断是否在原地重复、该不该推进；现在是第 {s.turn} 拍）
 {近期}
 
 # 行动次序（程序算好，谁还有几拍轮到——判断推进、以及「援兵/追兵/火势」等逼近之事何时兑现的参考）
 {序}
 
 # 裁决原则
-- **严守世界观法则与角色特质**：对有「防御特性（如刀枪不入/横练护体）」者，寻常刀剑拳脚无效或大打折扣；
-  须循法则所列途径（更强内力、毒、火、点穴、出其不意攻其弱点、断其根基）才奏效。攻中对方「弱点」则效果显著。
+- **严守世界观法则与角色特质**：对有「defenses（如刀枪不入/横练护体）」者，寻常刀剑拳脚无效或大打折扣；
+  须循法则所列途径（更强内力、毒、火、点穴、出其不意攻其弱点、断其根基）才奏效。攻中对方「weaknesses」则效果显著。
 - 以地面真相为唯一依据。角色不能自行声明成败；若意图与状态/法则矛盾，判为不可能或受阻。
-- **很少给干净的成功**，多数是「成功但有代价」——那个代价就是让场面滚动的燃料。
+- **很少给干净的成功**，多数是「success_with_cost」——那个代价就是让场面滚动的燃料。
 - **不容僵持、推动剧情（重要，所有模式通用）**：若最近几拍在原地重复（同样的动作/对话循环、谁也没真正前进），本拍就让局势**质变**，别再给「拉锯不动」的结果。
   按本场情境从下面挑**最合适**的推进手段（战斗与非战斗并列，哪种贴合就用哪种，别一律往战斗/威胁上靠）：
   · **有排队的威胁/危机** → 让开场埋下的悬置威胁随时间**兑现**（地面真相写「援兵数招内到」就让援兵到场）、环境危机升级逼人抉择（火势失控、退路将断、时限将尽）、或让反复无效者付出实质代价、削减其可选项；
-  · **没有威胁可兑现、只是闲场/日常/交涉间歇的停滞** → 促成一个**具体可见的转变**（某人做出新举动、关系前进一步、出现一件新实物或新情况），或用**时间跳跃**跳过死时间（见下「推进」）——**别硬塞战斗或凭空冒出威胁**。
+  · **没有威胁可兑现、只是闲场/日常/交涉间歇的停滞** → 促成一个**具体可见的转变**（某人做出新举动、关系前进一步、出现一件新实物或新情况），或用**时间跳跃**跳过死时间（见下「time_skip」）——**别硬塞战斗或凭空冒出威胁**。
 - **时间在流动**：地面真相里「即将到来／正在逼近」的事不可无限拖延，应随回合推进而兑现；没有这类悬置时，靠上面的非战斗手段同样把场景推向新阶段。
-- **压缩离场 / 时间跳跃（填「推进」字段，重要）**：当某行动意图本质是**离场小事**（「我很快买好回来」「出门取个东西」「等他半个时辰」），或场面陷入**只能靠跳过死时间才前进**的停滞时，
-  **别让角色真的离场耗多拍**——本拍当场了结：把该行动的结果照常落账（如社会事实「冰淇淋已买回」），并在「推进」写一句**时间压缩描述**（如「半个时辰后克洛伊拎着冰淇淋回来了」），角色**始终留在场**。非此情形「推进」务必留空。
+- **压缩离场 / 时间跳跃（填「time_skip」字段，重要）**：当某行动意图本质是**离场小事**（「我很快买好回来」「出门取个东西」「等他半个时辰」），或场面陷入**只能靠跳过死时间才前进**的停滞时，
+  **别让角色真的离场耗多拍**——本拍当场了结：把该行动的结果照常落账（如社会事实「冰淇淋已买回」），并在「time_skip」写一句**时间压缩描述**（如「半个时辰后克洛伊拎着冰淇淋回来了」），characters**始终留在场**。非此情形「time_skip」务必留空。
 - 后果要「质的、会改变能力」：写「右臂中刀只能用左手」而非数值。
 - **交互不限战斗，同一套裁决适用所有模式**——用该模式合适的质性后果，别硬套伤势：
   · 对话/交涉 → 信任/起疑/动摇/让步/把柄/承诺（多记为社会事实）
   · 伪装/潜入 → 是否被识破或起疑、掩护是否成立、露出的身份线索（用隐蔽与感知分发）
-- 运气：霉运→下调一阶或加倒楣并发状况；好运→容许罕见干净成功或有利转折；平→照常。
+- 运气：bad_luck→下调一阶或加倒楣并发状况；good_luck→容许罕见干净成功或有利转折；even→照常。
 - **隐蔽行动（重要，本拍行动标注「试图隐蔽」时必办）**：先判**是否被识破**——结合对手感知/警觉、运气、行动难度。
-  · 被识破 → `识破` 填 true、`表象` 留空（真相暴露，照真意叙事、按需把暴露记进账本与感知分发）。
-  · 蒙混过关 → `识破` 填 false，并在 `表象` 写一句**旁观者会信以为真的伪装明面动作**（与真意不同、貌似无害或合理，如真意「使眼色递暗号」→表象「端起酒杯抿了一口」）。真意只让其同阵营懂（用 可见性/感知分发）。
-  · 非隐蔽行动：`识破`=false、`表象` 留空即可。
+  · 被识破 → `detected` 填 true、`cover` 留空（真相暴露，照真意叙事、按需把暴露记进账本与感知分发）。
+  · 蒙混过关 → `detected` 填 false，并在 `cover` 写一句**旁观者会信以为真的伪装明面动作**（与真意不同、貌似无害或合理，如真意「使眼色递暗号」→cover「端起酒杯抿了一口」）。真意只让其同阵营懂（用 visibility/perception_map）。
+  · 非隐蔽行动：`detected`=false、`cover` 留空即可。
 - **复合行动**：一拍可能含「一个主要动作 + 附带小动作」（如攻击同时打暗号、后撤同时嘲讽）。请**逐部分裁决**，
-  并权衡「一心二用」的代价——通常主要动作打折、或附带动作不完全到位（正是「成功但有代价」的好题材）。
-  「目标」只是主要反应对象；附带对象（如收暗号的队友）由你在感知分发处理，不必另收反应。
+  并权衡「一心二用」的代价——通常主要动作打折、或附带动作不完全到位（正是「success_with_cost」的好题材）。
+  「target」只是主要反应对象；附带对象（如收暗号的队友）由你在感知分发处理，不必另收反应。
 - **社会/信息后果要落账**：对话、谈判、要挟若产生持久结果（招供、承诺、停火、结盟、情报揭露），
-  用 ledger_delta 记为社会事实（主体填 "场景"，类别填 "社会事实" 或 "情报"），带 gates 与可见性。
-- **瞬态状态设期限**：姿势晃动/被惊吓/火光蔓延/暂时失衡等短暂状态，add 时设「剩余拍数」(1-3，几拍后自动消失)；
+  用 ledger_delta 记为社会事实（主体填 "scene"，类别填 "social_facts" 或 "intel"），带 gates 与可见性。
+- **瞬态状态设期限**：姿势晃动/被惊吓/火光蔓延/暂时失衡等短暂状态，add 时设「ttl」(1-3，几拍后自动消失)；
   伤势/中毒/承诺/情绪转变/社会事实等持久状态留 null（不填）。
 - **升级即删旧、严禁堆栈近义状态**：当某状态恶化/被取代（火越烧越旺、伤势加重、恐惧升级、姿势改变），
   **先把旧版本的关键字放进 remove，再在 add 写新版本**——绝不让账本同时存在多条描述同一件事的近义状态。
   remove 关键字要**足够长、能唯一定位**旧条目（别填「恐惧」这种泛词会误删别的，要填「恐惧加剧，可能崩溃招供」这种独有片段）。
-- **同一事实只记一处**：招供/承诺/情报记成「社会事实」即可，**不要又拷贝一份到角色身心状况**。
-- 可见性只能填这四种之一：`public` / `gm` / `faction:阵营` / `self:角色id`（不要自创其他值）。
-- 感知分发：判断「谁察觉到这件事、察觉到多少」。昏迷者收不到；重伤分心可能漏看；背后动作可能未察觉。
-- **以角色为键的字段（感知分发/速度更新/感知更新/阵营变更）以及「主体」一律用上面「在场角色」里的角色名指代（程序会自动对应）。**
-- **阵营变更（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「阵营切换」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「阵营变更」(角色名→新阵营 我方/敌/中立)；**投靠「我方」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 GM摘要 点出这次转变，让叙事交代清楚。阵营只用 我方/敌/中立。
+- **同一事实只记一处**：招供/承诺/情报记成「social_facts」即可，**不要又拷贝一份到角色身心状况**。
+- 可见性只能填这四种之一：`public` / `gm` / `faction:faction` / `self:角色id`（不要自创其他值）。
+- perception_map：判断「谁察觉到这件事、察觉到多少」。昏迷者收不到；重伤分心可能漏看；背后动作可能未察觉。
+- **以角色为键的字段（perception_map/speed_updates/perception_updates/faction_changes）以及「subject」一律用上面「在场角色」里的角色名指代（程序会自动对应）。**
+- **faction_changes（倒戈/投靠/被策反/投降）**：若某角色提议切换阵营（见行动意图的「faction_switch」）或剧情让其改换立场，**需有足够叙事依据**才批准，写进「faction_changes」(角色名→新阵营 ally/enemy/neutral)；**投靠「ally」门槛要高**（须被说服/有恩义/利益足够，不能凭空宣布）。批准了就在 gm_summary 点出这次转变，让叙事交代清楚。阵营只用 ally/enemy/neutral。
 
 # 输出（只输出 JSON）
 {{
- "相关状态": ["你查看到的、与本意图相关的状态/特质/法则，逐条列"],
- "逐条判定": ["每条 → 激活/阻止/改写/无关，一句话"],
- "可行性": "不可能/受阻/可行/需改写",
- "结果阶梯": "成功/成功但有代价/局势逆转",
+ "relevant_conditions": ["你查看到的、与本意图相关的状态/特质/laws，逐条列"],
+ "rulings": ["每条 → 激活/阻止/改写/无关，一句话"],
+ "feasibility": "impossible/hindered/feasible/needs_rewrite",
+ "outcome": "success/success_with_cost/reversal",
  "ledger_delta": {{
-    "add": [{{"主体":"角色名或场景","类别":"姿势位置/身心状况/特殊情况/空间关系/场景事实/社会事实/情报","内容":"质性事实","gates":"如何约束后续","可见性":"public","剩余拍数":null}}],
+    "add": [{{"subject":"角色名或场景","category":"posture/conditions/status_effects/spatial/scene_facts/social_facts/intel","content":"质性事实","gates":"如何约束后续","visibility":"public","ttl":null}}],
     "remove": ["要移除的状态的关键字"],
     "modify": []
  }},
- "速度更新": {{"角色名": 整数速度（重伤3/濒死2/昏迷0，正常不填）}},
- "感知更新": {{"角色名": "如 蒙眼/昏迷/重伤分心"}},
- "阵营变更": {{"角色名": "我方/敌/中立（仅在批准倒戈/投靠/被策反时填，否则留空）"}},
- "感知分发": {{"角色名": "全部 / 部分:只看到表象 / 无"}},
- "识破": false,
- "表象": "（仅当本拍行动试图隐蔽且未被识破时：旁观者信以为真的伪装明面动作；被识破或非隐蔽留空）",
- "推进": "（仅当压缩离场或须跳过死时间时：一句时间压缩描述，角色不离场、结果另落账；否则务必留空）",
- "GM摘要": "给叙事者的一句话地面真相（这拍实际发生了什么、收在什么未决张力上：威胁/疑点/抉择）"
+ "speed_updates": {{"角色名": 整数速度（重伤3/濒死2/昏迷0，正常不填）}},
+ "perception_updates": {{"角色名": "如 蒙眼/昏迷/重伤分心"}},
+ "faction_changes": {{"角色名": "ally/enemy/neutral（仅在批准倒戈/投靠/被策反时填，否则留空）"}},
+ "perception_map": {{"角色名": "all / partial:只看到表象 / none"}},
+ "detected": false,
+ "cover": "（仅当本拍行动试图隐蔽且未被识破时：旁观者信以为真的伪装明面动作；被识破或非隐蔽留空）",
+ "time_skip": "（仅当压缩离场或须跳过死时间时：一句时间压缩描述，角色不离场、结果另落账；否则务必留空）",
+ "gm_summary": "给叙事者的一句话地面真相（这拍实际发生了什么、收在什么未决张力上：威胁/疑点/抉择）"
 }}"""
     return await grok.call(prompt, Adjudication, temperature=config.TEMP_ADJUDICATOR, max_tokens=1200)
 
 
-# ───────────────── GM / 叙事 agent ─────────────────
+# ───────────────── GM / narration agent ─────────────────
 def _vis_label(v: str) -> str:
     if v == "public":
-        return "公开"
+        return "public"
     if v.startswith("faction"):
         return "仅该阵营知"
     if v.startswith("self"):
@@ -301,57 +301,57 @@ def _vis_label(v: str) -> str:
 
 async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Intent,
                   reaction: Optional[Reaction] = None) -> Narration:
-    在场 = _roster(s)
-    pcard = s.角色卡.get(engine.player_id(s))
-    player_name = pcard.名 if pcard else "玩家"
+    present = _roster(s)
+    pcard = s.cards.get(engine.player_id(s))
+    player_name = pcard.name if pcard else "player"
     序 = _action_order_brief(s)
-    分发 = _perception_brief(s, adj.感知分发)
+    分发 = _perception_brief(s, adj.perception_map)
 
-    actor = s.角色卡.get(intent.actor)
-    actor_name = actor.名 if actor else intent.actor
-    隐蔽蒙混 = bool(intent.隐蔽 and adj.表象 and not adj.识破)
-    if 隐蔽蒙混:                       # 隐蔽未被识破：公开版只能写「表象」，真意只供其同阵营私密版
-        行动者行 = f"{actor_name} 明面上看起来：{adj.表象}" \
-                   + (f"（目标 {intent.目标}）" if intent.目标 else "")
+    actor = s.cards.get(intent.actor)
+    actor_name = actor.name if actor else intent.actor
+    隐蔽蒙混 = bool(intent.covert and adj.cover and not adj.detected)
+    if 隐蔽蒙混:                       # 隐蔽未被识破：公开版只能写「cover」，真意只供其同阵营私密版
+        行动者行 = f"{actor_name} 明面上看起来：{adj.cover}" \
+                   + (f"（target {intent.target}）" if intent.target else "")
         隐蔽行 = (f"\n# ⚠真意（机密：仅可用于 {actor_name} 同阵营角色的私密版，"
-                  f"**绝不可写进公开版**——公开版只准描述上面的「明面」）\n{actor_name} 实为：{intent.行动}")
+                  f"**绝不可写进公开版**——公开版只准描述上面的「明面」）\n{actor_name} 实为：{intent.action}")
     else:                            # 开放，或隐蔽已被识破：照真意写
-        行动者行 = f"{actor_name} 声明：{intent.行动}" \
-                   + (f"（目标 {intent.目标}）" if intent.目标 else "") \
-                   + ("（试图隐蔽，已被识破/暴露）" if intent.隐蔽 else "")
+        行动者行 = f"{actor_name} 声明：{intent.action}" \
+                   + (f"（target {intent.target}）" if intent.target else "") \
+                   + ("（试图隐蔽，已被识破/暴露）" if intent.covert else "")
         隐蔽行 = ""
     反应行 = ""
     if reaction:
-        rn = s.角色卡.get(reaction.actor)
-        反应行 = f"\n# 对方回应\n{rn.名 if rn else reaction.actor}：{reaction.反应}"
-    变更 = "\n".join(f"- {d.内容}（{_vis_label(d.可见性)}）" for d in adj.ledger_delta.add) \
+        rn = s.cards.get(reaction.actor)
+        反应行 = f"\n# 对方回应\n{rn.name if rn else reaction.actor}：{reaction.reaction}"
+    变更 = "\n".join(f"- {d.content}（{_vis_label(d.visibility)}）" for d in adj.ledger_delta.add) \
            or "（本拍无添加状态）"
-    近期叙事 = "\n".join(s.公开日志[-2:]) or "（开场）"
-    公开锚点 = "；".join(c.内容 for c in (s.会变层.场景.空间关系 + s.会变层.场景.场景事实)
-                        if c.可见性 == "public") or "（无）"
+    近期叙事 = "\n".join(s.public_log[-2:]) or "（开场）"
+    公开锚点 = "；".join(c.content for c in (s.ledger.scene.spatial + s.ledger.scene.scene_facts)
+                        if c.visibility == "public") or "（none）"
     判定材料 = ""
-    if adj.相关状态 or adj.逐条判定:
+    if adj.relevant_conditions or adj.rulings:
         判定材料 = ("\n# 本拍涉及的事实与判定（可据此充分描写，但别超出这些事实）\n"
-                   "相关状态：" + "；".join(adj.相关状态) +
-                   "\n判定：" + "；".join(adj.逐条判定))
-    推进段 = (f"\n# ⏭ 时间跳跃（本拍压缩跳过死时间，重要）\n{adj.推进}\n"
+                   "relevant_conditions：" + "；".join(adj.relevant_conditions) +
+                   "\n判定：" + "；".join(adj.rulings))
+    推进段 = (f"\n# ⏭ 时间跳跃（本拍压缩跳过死时间，重要）\n{adj.time_skip}\n"
               "（把跳过的这段时间**压成一句过场**带过，如「半个时辰后……」；别逐拍细写跳过的过程，落到跳跃后的此刻继续叙事。"
-              "角色并未离场，过场后他人依旧在这同一场景里。）") if adj.推进 else ""
+              "角色并未离场，过场后他人依旧在这同一场景里。）") if adj.time_skip else ""
     参与 = [intent.actor] + ([reaction.actor] if reaction else [])
     口吻rows = []
     for cid in 参与:
-        c = s.角色卡.get(cid)
+        c = s.cards.get(cid)
         if c:
-            口吻rows.append(f"- {c.名}：性格 {('、'.join(c.性格)) or '—'}；口吻 {c.说话风格 or '—'}")
+            口吻rows.append(f"- {c.name}：personality {('、'.join(c.personality)) or '—'}；口吻 {c.voice or '—'}")
     口吻txt = ("\n# 登场者性格与口吻（让对白与神态贴着角色）\n" + "\n".join(口吻rows)) if 口吻rows else ""
 
     prompt = f"""你是跑团游戏的 GM／叙事者。把这一拍写成**中立第三人称**、生动的散文。
 
 # 世界观基调（决定文字风格）
-{s.世界观.基调 or "（中性）"}
+{s.world.tone or "（中性）"}
 
 # 在场角色（用角色名指代）
-{在场}
+{present}
 
 # 故事进展（玩家刚看到的；承接它，但**绝不可重述**已写过的事件或对白）
 {近期叙事}
@@ -369,19 +369,19 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 {口吻txt}
 
 # 这一拍的地面真相（你知道全部）
-{adj.GM摘要}
-（结果阶梯：{adj.结果阶梯}；可行性：{adj.可行性}）
+{adj.gm_summary}
+（outcome：{adj.outcome}；feasibility：{adj.feasibility}）
 {推进段}
 
 # 本拍实际造成的状态变更（忠实据此叙事，注意每条的可见性）
 {变更}
 {判定材料}
 
-# 感知分发（谁察觉到多少——据此决定每人版本能写什么）
+# perception_map（谁察觉到多少——据此决定每人版本能写什么）
 {分发}
 
 # 叙事视角（最重要，先于一切）：中立第三人称、具名、不站任何一方
-- 公开叙事是**一份对所有人都成立的客观记述**——玩家与每个角色 agent 都会读到它并据此行动。**一律第三人称、直呼角色名**（含玩家角色「{player_name}」），**绝不用「你／你们」**，也绝不用「我方／敌方／友军／我们」这类**随立场变化**的词；否则不同立场的读者（尤其 NPC agent）会把指代弄反。
+- 公开叙事是**一份对所有人都成立的客观记述**——玩家与每个角色 agent 都会读到它并据此行动。**一律第三人称、直呼角色名**（含玩家角色「{player_name}」），**绝不用「你／你们」**，也绝不用「ally／敌方／友军／我们」这类**随立场变化**的词；否则不同立场的读者（尤其 NPC agent）会把指代弄反。
 - **用「身份／归属」（绝对）描述，不用「立场」（相对）**：写人物名字或其所属（「漕帮的汉子」「客栈伙计」「黑衣人」），不写「敌人／援兵／友军」。确需点出相对关系时**显式归到具名角色**——写「来接应刀疤的几名漕帮汉子」而非「援兵」，写「与阿青敌对的那人」而非「敌人」。
 - 私密版：给「察觉到更多」的某 NPC 补其独有感知，用该 NPC 名下的视角写（同样具名、不用「你」）。
 
@@ -390,10 +390,10 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
   本拍若只是「继续拖延/僵持」，就只写这拍**添加**的细节（一个眼神、半步移动、一句新话），别重描整个场面。
 - **别复读环境与招牌（关键）**：**不要每拍重念同一批环境/氛围**（阳光、气味、远处声响等背景锚点）或**同一角色的招牌神态/口头禅**——它们写过一次就够；
   把笔墨集中在本拍**真正变化的东西**上（见下方「本拍实际造成的状态变更」）。除非本拍真的动到某处环境，否则别再描写它。
-- **准确归属、忠于事实（同样关键）**：严格按上面「行动者 / 对方回应 / 状态变更」写「**谁**做了什么、**谁**被影响」。
+- **准确归属、忠于事实（同样关键）**：严格按上面「actor / 对方回应 / 状态变更」写「**谁**做了什么、**谁**被影响」。
   不可张冠李戴（把某人的事写到另一人头上，如该是「阿青的绕背意图被识破」却写成「玩家无处藏身」）；
-  不可改写事件性质（如把「计谋被识破」写成「某人暴露躲藏」）。摘要/变更没说的因果，不要自行发明。
-- **严禁发明新实体**：只能描写地面真相与在场角色中已存在的人、武器、物品、环境（冷兵器酒馆不可出现枪、子弹，不可冒出不存在的人物）。
+  不可改写事件性质（如把「计谋被识破」写成「某人暴露躲藏」）。summary/变更没说的因果，不要自行发明。
+- **严禁发明新实体**：只能描写地面真相与在场角色中已存在的人、武器、items、环境（冷兵器酒馆不可出现枪、子弹，不可冒出不存在的人物）。
 - 贴世界观基调的语气写；后果是质的、会改写下一步的可能（战斗写伤势，交涉写人心向背，潜入写疑点）。
 - **这一拍必须收在一个未决的张力上**（威胁、疑点、抉择皆可），逼人想回应。
 - 节奏随基调与模式：打斗可急，交涉可缓可柔，不必都用战斗节奏。
@@ -403,20 +403,20 @@ async def narrate(grok: GrokClient, s: Session, adj: Adjudication, intent: Inten
 - **充分但不杜撰**：可以在已提供的事实上尽情演绎（感官、心理、语气、节奏），但**所有具体细节都必须源自上面给的材料**（地面真相/相关状态与判定/状态变更/角色口吻/场景锚点），不得发明新事实或新实体。
 
 只输出 JSON：
-{{"公开":"全场可见的叙事","私密":{{"角色名":"该角色独有的额外感知（可选，没有就不要这个 key）"}}}}"""
+{{"public":"全场可见的叙事","private":{{"角色名":"该角色独有的额外感知（可选，没有就不要这个 key）"}}}}"""
     return await grok.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1000)
 
 
 # ───────────────── 滚动摘要：压缩旧叙事，保连贯（只管文气，不记事实） ─────────────────
 async def summarize_memory(grok: GrokClient, s: Session, cid: str,
                            old: str, evicted: list) -> str:
-    name = s.角色卡[cid].名
+    name = s.cards[cid].name
     block = "\n".join(evicted)
     prompt = f"""你在维护「{name}」的剧情记忆摘要，供其后续扮演保持连贯。
 把【既有摘要】与【接下来发生的数拍】融合成**一段精简、连贯**的摘要。
 
 # 既有摘要
-{old or "（无，这是第一次压缩）"}
+{old or "（none，这是第一次压缩）"}
 
 # 新发生的数拍（需并入摘要，之后不再逐字保留）
 {block}
@@ -426,16 +426,16 @@ async def summarize_memory(grok: GrokClient, s: Session, cid: str,
 - **不要记录精确状态数据**（谁伤在哪、谁站哪、确切承诺——那些另有账本）；你只负责「故事感」与连贯。
 - 精简，约 120 字内，一段话。
 
-只输出 JSON：{{"摘要":"..."}}"""
+只输出 JSON：{{"summary":"..."}}"""
     out = await grok.call(prompt, Summary, temperature=0.4, max_tokens=400)
-    return out.摘要
+    return out.summary
 
 
 # ───────────────── 账本整理：合并近义条目、清冗余（不改变事实） ─────────────────
 async def consolidate_conditions(grok: GrokClient, s: Session, label: str,
                                  conds: list) -> list:
     """把一份条目清单里描述同一件事的近义条目合并成单一条目。返回整理后的 Condition 清单。"""
-    lines = "\n".join(f"- {c.内容}｜gates:{c.gates}｜{c.可见性}" for c in conds)
+    lines = "\n".join(f"- {c.content}｜gates:{c.gates}｜{c.visibility}" for c in conds)
     prompt = f"""你在整理跑团游戏的状态账本「{label}」，移除冗余，但**不改变事实**。
 
 下列条目可能有多条描述同一件事的近义条目（例如反复出现「先还债再谈」）。请：
@@ -447,42 +447,42 @@ async def consolidate_conditions(grok: GrokClient, s: Session, label: str,
 目前清单：
 {lines}
 
-只输出 JSON：{{"conditions":[{{"内容":"精简事实","gates":"如何约束后续","可见性":"public"}}]}}"""
+只输出 JSON：{{"conditions":[{{"content":"精简事实","gates":"如何约束后续","visibility":"public"}}]}}"""
     out = await grok.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=900)
-    return [Condition(内容=c.内容, gates=c.gates, 可见性=c.可见性, 来源="整理")
+    return [Condition(content=c.content, gates=c.gates, visibility=c.visibility, source="整理")
             for c in out.conditions]
 
 
 # ───────────────── 编剧 agent：与用户协作设计剧本（区块式编辑） ─────────────────
 def _scenario_brief(sc: Scenario) -> str:
-    w, L = sc.世界观, sc.会变层
+    w, L = sc.world, sc.ledger
     lines = [
-        f"世界观：基调={w.基调 or '（空）'}｜法则 {len(w.法则)} 条｜背景{'已写' if w.背景 else '（空）'}",
-        f"场景：地点={sc.scene.地点 or '（空）'}｜钩子{'已写' if sc.scene.钩子 else '（空）'}｜在场={sc.scene.在场 or '（空）'}",
+        f"world：tone={w.tone or '（空）'}｜laws {len(w.laws)} 条｜background{'已写' if w.background else '（空）'}",
+        f"scene：location={sc.scene.location or '（空）'}｜hook{'已写' if sc.scene.hook else '（空）'}｜present={sc.scene.present or '（空）'}",
     ]
-    if sc.角色卡:
-        for cid, c in sc.角色卡.items():
-            lines.append(f"角色[{cid}]：{c.名}（{c.阵营}/{c.性别 or '?'}）能力{len(c.能力)}/防御{len(c.防御特性)}/弱点{len(c.弱点)}")
+    if sc.cards:
+        for cid, c in sc.cards.items():
+            lines.append(f"characters[{cid}]：{c.name}（{c.faction}/{c.gender or '?'}）abilities{len(c.abilities)}/防御{len(c.defenses)}/weaknesses{len(c.weaknesses)}")
     else:
-        lines.append("角色：（尚无）")
-    lines.append(f"初始局面：已配置角色 {len(L.角色)}｜空间关系{len(L.场景.空间关系)}｜场景事实{len(L.场景.场景事实)}｜社会事实{len(L.场景.社会事实)}")
+        lines.append("characters：（尚无）")
+    lines.append(f"初始局面：已配置角色 {len(L.characters)}｜spatial{len(L.scene.spatial)}｜scene_facts{len(L.scene.scene_facts)}｜social_facts{len(L.scene.social_facts)}")
     return "\n".join(lines)
 
 
 def author_missing(sc: Scenario) -> list:
     m = []
-    if not sc.世界观.基调:
+    if not sc.world.tone:
         m.append("世界观基调")
-    if not sc.scene.地点:
+    if not sc.scene.location:
         m.append("场景地点")
-    if not sc.scene.钩子:
+    if not sc.scene.hook:
         m.append("开场钩子")
-    if not any(c.扮演 == "玩家" for c in sc.角色卡.values()):
+    if not any(c.controller == "player" for c in sc.cards.values()):
         m.append("玩家角色")
-    if not any(c.阵营 == "敌" for c in sc.角色卡.values()):
+    if not any(c.faction == "enemy" for c in sc.cards.values()):
         m.append("至少一个敌人")
-    if not sc.会变层.角色:
-        m.append("初始局面（姿势/速度/行动值）")
+    if not sc.ledger.characters:
+        m.append("初始局面（姿势/速度/gauge）")
     return m
 
 
@@ -490,19 +490,19 @@ async def author_turn(grok: GrokClient, sc: Scenario, history: list, user_msg: s
     brief = _scenario_brief(sc)
     缺 = "、".join(author_missing(sc)) or "（基本要件看来已齐）"
     hist = "\n".join(f"{r}：{t}" for r, t in history[-6:]) or "（刚开始）"
-    在场ids = "、".join(sc.scene.在场) or "（尚无）"
+    在场ids = "、".join(sc.scene.present) or "（尚无）"
     prompt = f"""你是跑团游戏的「编剧」，与用户协作设计一份剧本。你要主动提案、填入具体草稿，而非只问空泛问题。
 
 # 编剧守则（决定品质）
-- 角色卡双用：演戏栏（性格/说话风格/动机目标/行为偏好）＋裁决栏（能力/防御特性/弱点）；务必补上「性别」与外貌年龄（写进身份背景），避免被脑补弄错。
-- **把关键弱点设成秘密**：放在角色卡「弱点」，并可在会变层用 可见性=gm 埋线索；别让玩家开局就知道（可被游戏中发现利用）。
-- 世界观「法则」要能**影响裁决**（例：某类高手刀枪不入、轻功可飞檐走壁、内伤难愈）。
+- 角色卡双用：演戏栏（personality/voice/motive/tactics）＋裁决栏（abilities/defenses/weaknesses）；务必补上「gender」与外貌年龄（写进身份背景），避免被脑补弄错。
+- **把关键弱点设成秘密**：放在角色卡「weaknesses」，并可在会变层用 visibility=gm 埋线索；别让玩家开局就知道（可被游戏中发现利用）。
+- world「laws」要能**影响裁决**（例：某类高手刀枪不入、轻功可飞檐走壁、内伤难愈）。
 - **埋钩子与张力**：开场 hook 要逼玩家立刻回应；用场景事实/社会事实提供筹码与变量（债务、人质、恩怨、出口封死）。
-- 会变层初始化：每个在场角色的「姿势位置、行动速度(玩家7/常5/快6/负伤4)、感知能力」；必要时设「初始行动值」做先机（埋伏者高）；空间关系与场景事实；社会事实。
-- 可见性只用：public / gm / faction:阵营 / self:角色id。
-- **阵营只用「我方」「敌」「中立」三选一**（玩家与队友＝我方，对手＝敌，掮客/线人/旁观者等第三方＝中立；引擎据此判敌我，不可自创其他值）。阵营可在游玩中由角色倒戈/被策反而改变，你只需设好初始阵营。
-- 角色 id 用简短英文（如 player/aqing/scar）；玩家角色的「扮演」填「玩家」，其余填「agent」。
-- 能力/防御特性/弱点一律用**质性描述**，**不要写数值**（写「旧伤复发时使不上力」而非「行动值-2」）。
+- 会变层初始化：每个在场角色的「posture、speed(玩家7/常5/快6/负伤4)、perception」；必要时设「初始行动值」做先机（埋伏者高）；空间关系与场景事实；social_facts。
+- 可见性只用：public / gm / faction:faction / self:角色id。
+- **阵营只用「ally」「enemy」「neutral」三选一**（玩家与队友＝ally，对手＝enemy，掮客/线人/旁观者等第三方＝neutral；引擎据此判敌我，不可自创其他值）。阵营可在游玩中由角色倒戈/被策反而改变，你只需设好初始阵营。
+- characters id 用简短英文（如 player/aqing/scar）；玩家角色的「controller」填「player」，其余填「agent」。
+- abilities/defenses/弱点一律用**质性描述**，**不要写数值**（写「旧伤复发时使不上力」而非「gauge-2」）。
 
 # 目前剧本状态
 {brief}
@@ -518,16 +518,16 @@ async def author_turn(grok: GrokClient, sc: Scenario, history: list, user_msg: s
 {user_msg}
 
 # 你的任务（重要）
-**优先回应用户的明确要求**：若要求关于某个角色（名字/性格/能力/弱点/秘密/外貌），就**更新该角色的 char 区块**（角色卡是剧本内核，别一直延后到「待补」）。没有特别指向时，挑「还缺/待决」中最关键的一项补上（通常是还没建的角色卡）。
+**优先回应用户的明确要求**：若要求关于某个角色（名字/personality/abilities/weaknesses/秘密/外貌），就**更新该角色的 char block**（角色卡是剧本内核，别一直延后到「待补」）。没有特别指向时，挑「还缺/待决」中最关键的一项补上（通常是还没建的角色卡）。
 理解用户意图，**本回合只更新一个区块**：
-- 区块="world" → 填 world（World：基调/背景/法则）
-- 区块="scene" → 填 scene（Scene：id/地点/钩子/在场）
-- 区块="char" → 填 char_id 与 char（一张完整角色卡）
-- 区块="ledger" → 填 ledger（完整初始会变层；**沿用已有的，再加新的**，别漏掉已配置的角色）
-- 区块="none" → 纯提问或建议，不更新
+- block="world" → 填 world（World：tone/background/laws）
+- block="scene" → 填 scene（Scene：id/location/hook/present）
+- block="char" → 填 char_id 与 char（一张完整角色卡）
+- block="ledger" → 填 ledger（完整初始会变层；**沿用已有的，再加新的**，别漏掉已配置的角色）
+- block="none" → 纯提问或建议，不更新
 把对应区块的字段**完整填好**，其余区块字段留 null。reply 简短说明你做了什么或要问什么并引导下一步。
-**保留既有内容（重要）**：编辑某区块时只动用户要求改的部分，该区块**其他既有字段要照原样一并带上**（例如只改世界法则时，基调/背景要原样返回，别留空）。系统把空栏视为「不更动」，故不必怕，但能带就带；ledger 的角色字典只会「更新你给的、保留你没给的」。
-missing 列出还缺的关键部分；当「世界观基调+场景+钩子+玩家+至少一敌+基本初始局面」齐备时 done=true。
+**保留既有内容（重要）**：编辑某区块时只动用户要求改的部分，该区块**其他既有字段要照原样一并带上**（例如只改世界法则时，tone/背景要原样返回，别留空）。系统把空栏视为「不更动」，故不必怕，但能带就带；ledger 的角色字典只会「更新你给的、保留你没给的」。
+missing 列出还缺的关键部分；当「世界观基调+scene+hook+player+至少一敌+基本初始局面」齐备时 done=true。
 
 只输出 JSON（依 schema；未更新的区块字段填 null）。"""
     return await grok.call(prompt, AuthorReply, temperature=0.7, max_tokens=2500)

@@ -5,7 +5,7 @@
 `admin_headers`（造用户发 JWT）/ `tavern_scenario`（落地一份已发布酒馆剧本）。
 
 端点现为 DB 持久化 + JWT 鉴权，所以这里重点覆盖**授权边界**（401 未登录 / 403 无权 /
-404 不泄露存在性）与**可见性·拥有权**，外加开局快照的迷雾/面板/日志结构。
+404 不泄露存在性）与**visibility·拥有权**，外加开局快照的迷雾/面板/日志结构。
 开新游戏时玩家速度最高、开局即停在玩家决策点，故全程不触发 Grok 调用。
 """
 import json
@@ -92,7 +92,7 @@ def test_change_password_requires_auth(client):
                        json={"old_password": "a", "new_password": "newpass1"}).status_code == 401
 
 
-# ───────────────── 剧本：鉴权 + CRUD + 可见性 + 拥有权 ─────────────────
+# ───────────────── 剧本：鉴权 + CRUD + visibility + 拥有权 ─────────────────
 def test_scenarios_require_auth(client):
     assert client.get("/api/scenarios").status_code == 401
 
@@ -108,13 +108,13 @@ def test_scenario_crud(client, user_headers):
     lst = client.get("/api/scenarios", headers=user_headers).json()["scenarios"]
     mine = next(s for s in lst if s["id"] == sid)
     assert mine["is_mine"] and mine["title"] == "我的剧本"
-    assert "背景" in mine                       # 列表带背景摘要字段(供首页卡片显示)
+    assert "background" in mine                       # 列表带背景摘要字段(供首页卡片显示)
 
     # 读：拿得到 content
     got = client.get(f"/api/scenarios/{sid}", headers=user_headers).json()
-    assert got["id"] == sid and "scar" in got["content"]["角色卡"]
+    assert got["id"] == sid and "scar" in got["content"]["cards"]
 
-    # 改：标题 + 可见性
+    # 改：标题 + visibility
     upd = client.put(f"/api/scenarios/{sid}",
                      json=_scenario_body("改名了", visibility="published"), headers=user_headers)
     assert upd.status_code == 200 and upd.json()["visibility"] == "published"
@@ -150,7 +150,7 @@ def test_scenario_admin_sees_all_with_author(client, make_user, admin_headers):
 
 
 def test_scenario_copy(client, make_user):
-    """复制别人的已发布剧本 → 得到我的私人副本（内容一致、归属转移、可见性 private）。"""
+    """复制别人的已发布剧本 → 得到我的私人副本（内容一致、归属转移、visibility private）。"""
     _, a = make_user("alice")
     _, b = make_user("bob")
     sid = client.post("/api/scenarios", json=_scenario_body("原作", "published"), headers=a).json()["id"]
@@ -163,7 +163,7 @@ def test_scenario_copy(client, make_user):
     # 副本归 B、内容与原作一致
     got = client.get(f"/api/scenarios/{new_id}", headers=b).json()
     assert got["author_id"] is not None
-    assert "scar" in got["content"]["角色卡"]
+    assert "scar" in got["content"]["cards"]
     mine = next(s for s in client.get("/api/scenarios", headers=b).json()["scenarios"] if s["id"] == new_id)
     assert mine["is_mine"]
 
@@ -172,7 +172,7 @@ def test_scenario_copy_private_forbidden(client, make_user):
     """不能复制看不到的私人剧本（读授权边界）。"""
     _, a = make_user("alice")
     _, b = make_user("bob")
-    sid = client.post("/api/scenarios", json=_scenario_body("私密"), headers=a).json()["id"]
+    sid = client.post("/api/scenarios", json=_scenario_body("private"), headers=a).json()["id"]
     assert client.post(f"/api/scenarios/{sid}/copy", headers=b).status_code == 403
 
 
@@ -187,22 +187,22 @@ def test_scenario_non_owner_cannot_modify(client, make_user):
 
 # ───────────────── 游戏：开局快照 + 拥有权 ─────────────────
 def test_new_game_fog_and_panels(client, tavern_scenario):
-    """开局快照：迷雾正确 + 结构化「角色」面板（我方详尽/敌方隐藏）+ 结构化「日志」。"""
+    """开局快照：迷雾正确 + 结构化「characters」面板（我方详尽/敌方隐藏）+ 结构化「log」。"""
     sid, headers = tavern_scenario
     r = client.post("/api/game/new", json={"scenario_id": sid}, headers=headers).json()
     gid = r["game_id"]
     try:
         assert r["pending"]["type"] == "player_action"
-        assert any("开场" in l for l in r["公开日志"])
-        # 迷雾：上帝视角（账本调试）有敌方秘密；玩家侧不泄露由下方「角色」面板断言覆盖
-        assert "怕火" in r["账本调试"]
+        assert any("开场" in l for l in r["public_log"])
+        # 迷雾：上帝视角（ledger_debug）有敌方秘密；玩家侧不泄露由下方「characters」面板断言覆盖
+        assert "怕火" in r["ledger_debug"]
         # 结构化角色面板：队友卡可见、敌方卡不注入
-        roles = {x["id"]: x for x in r["角色"]}
-        assert roles["aqing"]["是我方"] and roles["aqing"].get("能力")
-        assert "弱点" not in roles["scar"] and "能力" not in roles["scar"]
+        roles = {x["id"]: x for x in r["characters"]}
+        assert roles["aqing"]["is_ally"] and roles["aqing"].get("abilities")
+        assert "weaknesses" not in roles["scar"] and "abilities" not in roles["scar"]
         assert "怕火" not in json.dumps(roles["scar"], ensure_ascii=False)
         # 结构化逐拍日志：开场为系统行（无行动者）
-        assert r["日志"] and r["日志"][0]["行动者"] is None
+        assert r["log"] and r["log"][0]["actor"] is None
         # 取快照、列进行中
         assert client.get(f"/api/game/{gid}", headers=headers).json()["game_id"] == gid
         assert any(g["game_id"] == gid for g in client.get("/api/games", headers=headers).json()["games"])
@@ -229,12 +229,12 @@ def test_new_game_private_scenario_forbidden(client, make_user):
 
 
 @pytest.mark.parametrize("content, why", [
-    ({"id": "无玩家", "scene": {"id": "s", "地点": "x", "在场": ["e1"]},
-      "角色卡": {"e1": {"名": "匪", "阵营": "敌", "扮演": "agent"}}}, "无玩家"),
-    ({"id": "玩家不在场", "scene": {"id": "s", "地点": "x", "在场": ["e1"]},
-      "角色卡": {"p1": {"名": "侠", "阵营": "我方", "扮演": "玩家"},
-                "e1": {"名": "匪", "阵营": "敌", "扮演": "agent"}}}, "玩家不在场"),
-    ({"id": "空在场", "scene": {"id": "s", "地点": "x", "在场": []}, "角色卡": {}}, "空在场"),
+    ({"id": "无玩家", "scene": {"id": "s", "location": "x", "present": ["e1"]},
+      "cards": {"e1": {"name": "匪", "faction": "enemy", "controller": "agent"}}}, "无玩家"),
+    ({"id": "玩家不在场", "scene": {"id": "s", "location": "x", "present": ["e1"]},
+      "cards": {"p1": {"name": "侠", "faction": "ally", "controller": "player"},
+                "e1": {"name": "匪", "faction": "enemy", "controller": "agent"}}}, "玩家不在场"),
+    ({"id": "空在场", "scene": {"id": "s", "location": "x", "present": []}, "cards": {}}, "空在场"),
 ], ids=["无玩家", "玩家不在场", "空在场"])
 def test_new_game_incomplete_scenario_rejected(client, user_headers, content, why):
     """不完整剧本能保存，但开局被闸门挡成清晰 400（而非 500 或无限 LLM 循环挂起）。"""
@@ -266,7 +266,7 @@ def test_game_admin_sees_owner(client, tavern_scenario, admin_headers):
         games = client.get("/api/games", headers=admin_headers).json()["games"]
         row = next(g for g in games if g["game_id"] == gid)
         assert row["owner"] == "author"      # tavern_scenario 的拥有者用户名
-        assert row["剧本名"] == "_pytest_tavern"   # 游戏列表显示剧本名(而非地点)
+        assert row["scenario_name"] == "_pytest_tavern"   # 游戏列表显示剧本名(而非地点)
     finally:
         client.delete(f"/api/game/{gid}", headers=a)
 
@@ -276,16 +276,16 @@ class _FakeGrok:
     """离线假 grok：character_intent/reaction 会调它，返回固定 Intent/Reaction。"""
     async def call(self, prompt, schema, **kw):
         if schema.__name__ == "Intent":
-            return schema(行动="缓缓起身按住短刃，盯着刀疤", 目标="刀疤")   # 目标用名，端点应 resolve 成 id
+            return schema(action="缓缓起身按住短刃，盯着刀疤", target="刀疤")   # 目标用名，端点应 resolve 成 id
         if schema.__name__ == "Reaction":
-            return schema(反应="侧身避开，反手扣腕")
+            return schema(reaction="侧身避开，反手扣腕")
         return schema()
     async def close(self):
         pass
 
 
 def test_suggest_action(client, tavern_scenario, monkeypatch):
-    """玩家行动点：suggest 返回 action 建议；目标名被 resolve 成 id；只读不改局面。"""
+    """玩家行动点：suggest 返回 action suggestion；目标名被 resolve 成 id；只读不改局面。"""
     monkeypatch.setattr("backend.routes.game.get_grok", lambda: _FakeGrok())
     sid, headers = tavern_scenario
     gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=headers).json()["game_id"]
@@ -293,13 +293,13 @@ def test_suggest_action(client, tavern_scenario, monkeypatch):
         before = client.get(f"/api/game/{gid}", headers=headers).json()
         r = client.get(f"/api/game/{gid}/suggest", headers=headers)
         assert r.status_code == 200
-        sug = r.json()["建议"]
-        assert sug["类型"] == "action"
-        assert "短刃" in sug["行动"]
-        assert sug["目标id"] == "scar" and sug["目标名"] == "刀疤"   # 名→id
-        # 只读：回合数/pending 不变
+        sug = r.json()["suggestion"]
+        assert sug["kind"] == "action"
+        assert "短刃" in sug["action"]
+        assert sug["target_id"] == "scar" and sug["target_name"] == "刀疤"   # name→id
+        # 只读：turn/pending 不变
         after = client.get(f"/api/game/{gid}", headers=headers).json()
-        assert after["回合数"] == before["回合数"] and after["pending"] == before["pending"]
+        assert after["turn"] == before["turn"] and after["pending"] == before["pending"]
     finally:
         client.delete(f"/api/game/{gid}", headers=headers)
 
@@ -315,7 +315,7 @@ def test_suggest_null_when_not_player_turn(client, tavern_scenario, db):
         s.pending = None
         game_store.save_game(db, gid, s)
         r = client.get(f"/api/game/{gid}/suggest", headers=headers).json()
-        assert r["建议"] is None
+        assert r["suggestion"] is None
     finally:
         client.delete(f"/api/game/{gid}", headers=headers)
 

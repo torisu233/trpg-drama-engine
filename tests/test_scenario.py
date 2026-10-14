@@ -11,75 +11,75 @@ def test_scenario_roundtrip():
     sc = scen.scenario_from_session(s0, "tavern")
     sc2 = Scenario(**json.loads(sc.model_dump_json()))
     s1 = scen.session_from_scenario(sc2)
-    assert "怕火" in "".join(s1.角色卡["scar"].弱点)
-    assert s1.角色卡["aqing"].性别 == "男"
-    assert any("等同伙" in c.内容 for c in s1.会变层.场景.场景事实)
-    assert s1.会变层.角色["player"].行动速度 == config.SPEED_PLAYER
-    assert s1.世界观.法则
-    assert s1.回合数 == 0 and s1.pending is None
-    assert set(s1.记忆.keys()) == set(s1.scene.在场)
-    assert any("开场" in line for line in s1.公开日志)
+    assert "怕火" in "".join(s1.cards["scar"].weaknesses)
+    assert s1.cards["aqing"].gender == "男"
+    assert any("等同伙" in c.content for c in s1.ledger.scene.scene_facts)
+    assert s1.ledger.characters["player"].speed == config.SPEED_PLAYER
+    assert s1.world.laws
+    assert s1.turn == 0 and s1.pending is None
+    assert set(s1.memory.keys()) == set(s1.scene.present)
+    assert any("开场" in line for line in s1.public_log)
 
 
 def test_author_merge_keeps_existing():
     """编剧合并：空栏=不更动，只改用户指定的，其他既有内容保留。"""
     sc = Scenario(
         id="t",
-        世界观=World(基调="武侠", 背景="边城", 法则=["法则A"]),
-        角色卡={"scar": CharCard(名="刀疤", 阵营="敌", 能力=["快刀"], 弱点=["怕火"])},
+        world=World(tone="武侠", background="边城", laws=["法则A"]),
+        cards={"scar": CharCard(name="刀疤", faction="enemy", abilities=["快刀"], weaknesses=["怕火"])},
     )
-    # 改 world：只加法则；基调/背景留空 → 不该被清
-    scen.apply_author_reply(sc, AuthorReply(reply="", 区块="world",
-        world=World(基调="", 背景="", 法则=["法则A", "法则B"])))
-    assert sc.世界观.基调 == "武侠" and sc.世界观.背景 == "边城"
-    assert sc.世界观.法则 == ["法则A", "法则B"]
+    # 改 world：只加法则；tone/背景留空 → 不该被清
+    scen.apply_author_reply(sc, AuthorReply(reply="", block="world",
+        world=World(tone="", background="", laws=["法则A", "法则B"])))
+    assert sc.world.tone == "武侠" and sc.world.background == "边城"
+    assert sc.world.laws == ["法则A", "法则B"]
 
     # 改 char：只改弱点；能力留空 → 能力不该被清
-    scen.apply_author_reply(sc, AuthorReply(reply="", 区块="char", char_id="scar",
-        char=CharCard(名="刀疤", 阵营="敌", 弱点=["怕火", "怕水"])))
-    assert sc.角色卡["scar"].能力 == ["快刀"]
-    assert sc.角色卡["scar"].弱点 == ["怕火", "怕水"]
+    scen.apply_author_reply(sc, AuthorReply(reply="", block="char", char_id="scar",
+        char=CharCard(name="刀疤", faction="enemy", weaknesses=["怕火", "怕水"])))
+    assert sc.cards["scar"].abilities == ["快刀"]
+    assert sc.cards["scar"].weaknesses == ["怕火", "怕水"]
 
-    # ledger：添加 player 局面，不该清掉既有 scar 局面（key 级合并）
-    sc.会变层.角色["scar"] = CharLedger(姿势位置="门口")
-    scen.apply_author_reply(sc, AuthorReply(reply="", 区块="ledger",
-        ledger=Ledger(角色={"player": CharLedger(姿势位置="桌边")})))
-    assert "scar" in sc.会变层.角色 and "player" in sc.会变层.角色
+    # ledger：添加 player situation，不该清掉既有 scar situation（key 级合并）
+    sc.ledger.characters["scar"] = CharLedger(posture="门口")
+    scen.apply_author_reply(sc, AuthorReply(reply="", block="ledger",
+        ledger=Ledger(characters={"player": CharLedger(posture="桌边")})))
+    assert "scar" in sc.ledger.characters and "player" in sc.ledger.characters
 
 
 def test_author_merge_preserves_tielv():
-    """编剧编辑既有角色时，用户手填的『扮演铁律』不被清（不在 _CARD_FIELDS、走保留）。"""
-    sc = Scenario(id="t", 角色卡={"scar": CharCard(名="刀疤", 阵营="敌", 扮演铁律="绝不投降")})
-    scen.apply_author_reply(sc, AuthorReply(reply="", 区块="char", char_id="scar",
-        char=CharCard(名="刀疤", 阵营="敌", 性格=["狡猾"])))   # AI 没填铁律（默认空）
-    assert sc.角色卡["scar"].扮演铁律 == "绝不投降"   # 铁律保留、未被清
-    assert sc.角色卡["scar"].性格 == ["狡猾"]        # 正常字段照常合并
+    """编剧编辑既有角色时，用户手填的『directive』不被清（不在 _CARD_FIELDS、走保留）。"""
+    sc = Scenario(id="t", cards={"scar": CharCard(name="刀疤", faction="enemy", directive="绝不投降")})
+    scen.apply_author_reply(sc, AuthorReply(reply="", block="char", char_id="scar",
+        char=CharCard(name="刀疤", faction="enemy", personality=["狡猾"])))   # AI 没填铁律（默认空）
+    assert sc.cards["scar"].directive == "绝不投降"   # 铁律保留、未被清
+    assert sc.cards["scar"].personality == ["狡猾"]        # 正常字段照常合并
 
 
 # ───────────────── 不完整剧本：退化（剔孤儿）+ 开局闸门 ─────────────────
 def test_session_from_scenario_prunes_orphans():
-    """在场/会变层引用了不存在的角色卡（孤儿）→ 开局时剔除，ground_truth 不再 KeyError。"""
+    """present/会变层引用了不存在的角色卡（孤儿）→ 开局时剔除，ground_truth 不再 KeyError。"""
     sc = Scenario(
-        id="孤儿", scene=Scene(id="s", 地点="渡口", 在场=["p1", "ghost_scene"]),
-        角色卡={"p1": CharCard(名="侠", 阵营="我方", 扮演="玩家")},
-        会变层=Ledger(角色={"p1": CharLedger(), "ghost_ledger": CharLedger()}),
+        id="孤儿", scene=Scene(id="s", location="渡口", present=["p1", "ghost_scene"]),
+        cards={"p1": CharCard(name="侠", faction="ally", controller="player")},
+        ledger=Ledger(characters={"p1": CharLedger(), "ghost_ledger": CharLedger()}),
     )
     s = scen.session_from_scenario(sc)
-    assert s.scene.在场 == ["p1"]                       # 孤儿在场 id 被剔
-    assert set(s.会变层.角色) == {"p1"}                  # 孤儿会变层条目被剔
+    assert s.scene.present == ["p1"]                       # 孤儿在场 id 被剔
+    assert set(s.ledger.characters) == {"p1"}                  # 孤儿会变层条目被剔
     assert "侠" in engine.ground_truth(s)                # 不崩（旧代码此处 KeyError）
 
 
 def test_prune_orphans_idempotent_and_on_load():
     """prune_orphans 可直接作用于既有 Session（读档侧用）；干净 Session 不受影响。"""
     s = new_tavern_session()
-    before = (list(s.scene.在场), set(s.会变层.角色))
+    before = (list(s.scene.present), set(s.ledger.characters))
     engine.prune_orphans(s)
-    assert (list(s.scene.在场), set(s.会变层.角色)) == before     # 一致剧本：无变化
-    s.会变层.角色["zombie"] = CharLedger()                        # 注入孤儿
-    s.scene.在场.append("zombie")
+    assert (list(s.scene.present), set(s.ledger.characters)) == before     # 一致剧本：无变化
+    s.ledger.characters["zombie"] = CharLedger()                        # 注入孤儿
+    s.scene.present.append("zombie")
     engine.prune_orphans(s)
-    assert "zombie" not in s.会变层.角色 and "zombie" not in s.scene.在场
+    assert "zombie" not in s.ledger.characters and "zombie" not in s.scene.present
 
 
 def test_validate_playable():
@@ -90,16 +90,16 @@ def test_validate_playable():
         return scen.session_from_scenario(sc)
 
     # 无玩家（全 agent）
-    no_player = _sess(Scenario(id="a", scene=Scene(id="s", 在场=["e1"]),
-        角色卡={"e1": CharCard(名="匪", 阵营="敌", 扮演="agent")}))
-    assert "玩家" in engine.validate_playable(no_player)
+    no_player = _sess(Scenario(id="a", scene=Scene(id="s", present=["e1"]),
+        cards={"e1": CharCard(name="匪", faction="enemy", controller="agent")}))
+    assert "player" in engine.validate_playable(no_player)
 
-    # 玩家存在但不在「在场」→ 无行动条、永远轮不到
-    off_scene = _sess(Scenario(id="b", scene=Scene(id="s", 在场=["e1"]),
-        角色卡={"p1": CharCard(名="侠", 阵营="我方", 扮演="玩家"),
-                "e1": CharCard(名="匪", 阵营="敌", 扮演="agent")}))
+    # 玩家存在但不在「present」→ 无行动条、永远轮不到
+    off_scene = _sess(Scenario(id="b", scene=Scene(id="s", present=["e1"]),
+        cards={"p1": CharCard(name="侠", faction="ally", controller="player"),
+                "e1": CharCard(name="匪", faction="enemy", controller="agent")}))
     assert "不在场" in engine.validate_playable(off_scene)
 
     # 无在场角色
-    empty = _sess(Scenario(id="c", scene=Scene(id="s", 在场=[]), 角色卡={}))
+    empty = _sess(Scenario(id="c", scene=Scene(id="s", present=[]), cards={}))
     assert engine.validate_playable(empty) is not None

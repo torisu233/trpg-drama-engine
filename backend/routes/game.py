@@ -1,4 +1,4 @@
-"""游玩路由：有状态场次（存 DB，绑 user）。行动/反应以串流（NDJSON）逐拍推给前端。
+"""游玩路由：有状态场次（存 DB，绑 user）。action/反应以串流（NDJSON）逐拍推给前端。
 
 游戏永远私人：列/读/删/行动仅本人 / admin。开局检查剧本可见性。
 串流时每拍用独立 session 存回 DB（避开请求依赖在流式响应里的生命周期问题）。
@@ -70,7 +70,7 @@ def _stream(gid: str, s, gen):
     """把 flow 的串流产生器逐拍包成 NDJSON；每拍用独立 DB session 存回。"""
     async def body():
         async for sess in gen:
-            if not sess.进行中:                 # 预告帧（延迟遮盖用）只即时显示、不入库，断线不留半截脏状态
+            if not sess.in_progress:                 # 预告帧（延迟遮盖用）只即时显示、不入库，断线不留半截脏状态
                 db = SessionLocal()
                 try:
                     game_store.save_game(db, gid, sess)
@@ -83,7 +83,7 @@ def _stream(gid: str, s, gen):
 @router.post("/game/{gid}/action")
 async def action(gid: str, payload: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
     _, s = _owned_session(db, gid, user)
-    if s.结束:
+    if s.ended:
         return JSONResponse(game_store.snapshot(gid, s))
     return _stream(gid, s, flow.stream_action(get_grok(), s, payload.get("action", {})))
 
@@ -91,7 +91,7 @@ async def action(gid: str, payload: dict, user: User = Depends(current_user), db
 @router.post("/game/{gid}/react")
 async def react(gid: str, payload: dict, user: User = Depends(current_user), db: Session = Depends(get_db)):
     _, s = _owned_session(db, gid, user)
-    if s.结束:
+    if s.ended:
         return JSONResponse(game_store.snapshot(gid, s))
     return _stream(gid, s, flow.stream_reaction(get_grok(), s, payload.get("reaction", {})))
 
@@ -100,18 +100,18 @@ async def react(gid: str, payload: dict, user: User = Depends(current_user), db:
 async def suggest(gid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
     """AI 替玩家出一个「参考行为」（如同 agent 角色那样），供玩家参考——玩家仍手动行动。
     只读：不推进、不落账、不存档；仅在玩家决策点(pending=player_action/reaction)有效，否则建议=None。
-    复用 character_intent/reaction（玩家卡 扮演==玩家 同有完整演戏字段）；基于玩家视野(雾)不漏 gm 秘密。"""
+    复用 character_intent/reaction（玩家卡 controller==player 同有完整演戏字段）；基于玩家视野(雾)不漏 gm 秘密。"""
     _, s = _owned_session(db, gid, user)
     p = s.pending or {}
-    if s.结束 or p.get("type") not in ("player_action", "player_reaction"):
-        return {"建议": None}
+    if s.ended or p.get("type") not in ("player_action", "player_reaction"):
+        return {"suggestion": None}
     grok = get_grok()
     pid = engine.player_id(s)
     if p.get("type") == "player_action":
         intent = await agents.character_intent(grok, s, pid)
-        tid = engine.resolve_id(s, intent.目标)        # 名/id/None → id，给前端 select 用
-        return {"建议": {"类型": "action", "行动": intent.行动,
-                        "目标id": tid, "目标名": (s.角色卡[tid].名 if tid else None),
-                        "隐蔽": intent.隐蔽}}
+        tid = engine.resolve_id(s, intent.target)        # name/id/None → id，给前端 select 用
+        return {"suggestion": {"kind": "action", "action": intent.action,
+                        "target_id": tid, "target_name": (s.cards[tid].name if tid else None),
+                        "covert": intent.covert}}
     reaction = await agents.character_reaction(grok, s, pid, p.get("incoming", ""))
-    return {"建议": {"类型": "reaction", "反应": reaction.反应}}
+    return {"suggestion": {"kind": "reaction", "reaction": reaction.reaction}}

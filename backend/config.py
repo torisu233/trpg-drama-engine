@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── 行动条 ──
+# ── action_bar ──
 ACTION_THRESHOLD = 20          # 行动值达此即可行动
 SPEED_PLAYER = 7               # 玩家预设略高
 SPEED_FAST = 6
@@ -19,10 +19,10 @@ KEEP_RECENT = 5               # 保留窗 W：记忆达 2W 时，把最旧 W 条
 
 # ── 账本整理 ──
 CONSOLIDATE_THRESHOLD = 4     # 某清单的「公开且持久」条目达此数，就触发 LLM 合并近义/清冗余
-CONSOLIDATE_THRESHOLD_STATE = 2  # 角色「身心状况」更易近义堆栈（同一人状态递进），低阈值更早兜；场景列保持 4（多条独立环境事实，降太低易误并）
+CONSOLIDATE_THRESHOLD_STATE = 2  # characters「conditions」更易近义堆栈（同一人状态递进），低阈值更早兜；场景列保持 4（多条独立环境事实，降太低易误并）
 
 # ── 运气神谕（争议行动才掷；对角色隐藏）──
-LUCK_TIERS = ["霉运", "平", "好运"]
+LUCK_TIERS = ["bad_luck", "even", "good_luck"]
 LUCK_WEIGHTS = [0.25, 0.50, 0.25]
 
 # ── LLM 服务端（OpenAI 兼容；现用 DeepSeek）──

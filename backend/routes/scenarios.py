@@ -1,4 +1,4 @@
-"""剧本路由：DB 持久化 + 权限（可见性/拥有权）+ 编剧 agent 对话。
+"""剧本路由：DB 持久化 + 权限（visibility/拥有权）+ 编剧 agent 对话。
 
 - 列表：published 或自己的；admin 看全部（带作者 username）。
 - 读：published 人人可读；private 仅作者/admin。
@@ -49,7 +49,7 @@ def list_scenarios(user: User = Depends(current_user), db: Session = Depends(get
         authors = {u.id: u.username for u in db.query(User).filter(User.id.in_(ids))}
     return {"scenarios": [
         {"id": r.id, "title": r.title, "visibility": r.visibility,
-         "背景": (((r.content or {}).get("世界观") or {}).get("背景") or "")[:120],
+         "background": (((r.content or {}).get("world") or {}).get("background") or "")[:120],
          "author": authors.get(r.author_id), "is_mine": r.author_id == user.id}
         for r in rows]}
 
@@ -124,7 +124,7 @@ async def author_turn(payload: dict, user: User = Depends(current_user)):
     return {
         "reply": rep.reply,
         "scenario": sc,
-        "区块": 更新区块,
+        "block": 更新区块,
         "char_id": rep.char_id,
         "missing": rep.missing,
         "done": rep.done,

@@ -1,14 +1,14 @@
 """手写场景：雨夜酒馆（武侠世界观，v1 用，先不做编剧 agent）。
 
 三人局：
-- player 玩家（真人）
-- aqing 阿青（我方，AI 队友）
-- scar  刀疤（敌，AI）
+- player player（真人）
+- aqing 阿青（ally，AI 队友）
+- scar  刀疤（enemy，AI）
 
 示范三件事：
 - 世界观法则（含「武功大成者刀枪不入」这类影响裁决的硬规则）
-- 角色卡的演戏特质 + 裁决特质（防御/弱点，对手看不到，可被发现利用）
-- 埋的秘密（刀疤怕火＝弱点；在等同伙包抄＝gm 场景事实）
+- 角色卡的演戏特质 + 裁决特质（防御/weaknesses，对手看不到，可被发现利用）
+- 埋的秘密（刀疤怕火＝weaknesses；在等同伙包抄＝gm scene_facts）
 """
 from .models import (
     Session, Scene, World, CharCard, Ledger, CharLedger, SceneLedger, Condition, Item,
@@ -17,14 +17,14 @@ from . import config
 
 
 def new_tavern_session() -> Session:
-    世界观 = World(
-        基调="武侠。江湖恩怨、刀光剑影，重义轻生死，市井与庙堂交错。",
-        背景=(
+    world = World(
+        tone="武侠。江湖恩怨、刀光剑影，重义轻生死，市井与庙堂交错。",
+        background=(
             "这是个武林门派林立的年代。漕帮把持运河命脉，黑白通吃；"
             "江湖人讲的是面子、义气与恩仇。武功分高下：练到家的高手气劲护体，"
             "寻常兵刃难伤分毫，唯有更高明的手段才动得了他。钱与命，在江湖上常常等价。"
         ),
-        法则=[
+        laws=[
             "武功大成者运气护体，寻常刀剑拳脚难伤其要害；须以更强内力、毒、火攻、点中要穴、"
             "出其不意攻其弱点，或断其根基（废其武功来源）方能制之。",
             "轻功高者可飞檐走壁、瞬间欺近或脱身；轻功低者追之不及。",
@@ -33,93 +33,93 @@ def new_tavern_session() -> Session:
         ],
     )
 
-    角色卡 = {
+    cards = {
         "player": CharCard(
-            名="玩家", 阵营="我方", 扮演="玩家", 性别="男",
-            身份背景="流亡的前禁军校尉，三十出头，身形精悍、左肩有旧伤；因故欠下漕帮一笔债，剑法出身行伍。",
-            性格=["谨慎", "记仇"],
-            说话风格="话不多，冷硬，必要时才开口。",
-            动机目标="活着脱身，并查清这笔债背后是谁要你的命。",
-            行为偏好=["先观察再出手", "擅用环境", "不打无把握之仗"],
-            能力=["行伍剑法，近身狠准", "识破谎言", "临阵冷静"],
-            防御特性=["久经战阵，不易自乱阵脚"],
-            弱点=["旧伤在左肩，受力过猛会使不上劲"],
+            name="player", faction="ally", controller="player", gender="男",
+            backstory="流亡的前禁军校尉，三十出头，身形精悍、左肩有旧伤；因故欠下漕帮一笔债，剑法出身行伍。",
+            personality=["谨慎", "记仇"],
+            voice="话不多，冷硬，必要时才开口。",
+            motive="活着脱身，并查清这笔债背后是谁要你的命。",
+            tactics=["先观察再出手", "擅用环境", "不打无把握之仗"],
+            abilities=["行伍剑法，近身狠准", "识破谎言", "临阵冷静"],
+            defenses=["久经战阵，不易自乱阵脚"],
+            weaknesses=["旧伤在左肩，受力过猛会使不上劲"],
         ),
         "aqing": CharCard(
-            名="阿青", 阵营="我方", 扮演="agent", 性别="男",
-            身份背景="与玩家同行的市井混混，二十来岁的精壮汉子、嗓门奇大；帮过你一把，自此认你做大哥。",
-            性格=["鲁莽", "重情义", "嘴贱"],
-            说话风格="大嗓门、粗话连篇、爱起哄，紧张时更聒噪。",
-            动机目标="罩着大哥（玩家）全身而退，顺便逞点威风。",
-            行为偏好=["先动手再说", "掀桌砸场、制造混乱", "拿身边杂物当武器"],
-            能力=["力气大", "市井打斗、不要命", "对酒馆地形熟"],
-            防御特性=["皮粗肉厚，挨几下还能撑"],
-            弱点=["头脑简单，容易被激将或诓骗", "护主心切，会为玩家涉险"],
+            name="阿青", faction="ally", controller="agent", gender="男",
+            backstory="与玩家同行的市井混混，二十来岁的精壮汉子、嗓门奇大；帮过你一把，自此认你做大哥。",
+            personality=["鲁莽", "重情义", "嘴贱"],
+            voice="大嗓门、粗话连篇、爱起哄，紧张时更聒噪。",
+            motive="罩着大哥（player）全身而退，顺便逞点威风。",
+            tactics=["先动手再说", "掀桌砸场、制造混乱", "拿身边杂物当武器"],
+            abilities=["力气大", "市井打斗、不要命", "对酒馆地形熟"],
+            defenses=["皮粗肉厚，挨几下还能撑"],
+            weaknesses=["头脑简单，容易被激将或诓骗", "护主心切，会为玩家涉险"],
         ),
         "scar": CharCard(
-            名="刀疤", 阵营="敌", 扮演="agent", 性别="男",
-            身份背景="漕帮的二路打手，四十岁精瘦汉子，左脸一道刀疤；奉命来讨债兼拿人。",
-            性格=["狡猾", "记仇", "欺软怕硬"],
-            说话风格="皮笑肉不笑、爱抛狠话又留余地，惯于拖延套话。",
-            动机目标="拖到同伙包抄合围，再一举拿下玩家，最好不伤自己。",
-            行为偏好=["能拖就拖、虚与委蛇", "占上风才动手", "以人质/把柄要挟"],
-            能力=["漕帮快刀，近身狠辣", "看人说谎、见风转舵"],
-            防御特性=["练过横练功夫，皮糙肉厚，寻常拳脚难伤"],
-            弱点=[
+            name="刀疤", faction="enemy", controller="agent", gender="男",
+            backstory="漕帮的二路打手，四十岁精瘦汉子，左脸一道刀疤；奉命来讨债兼拿人。",
+            personality=["狡猾", "记仇", "欺软怕硬"],
+            voice="皮笑肉不笑、爱抛狠话又留余地，惯于拖延套话。",
+            motive="拖到同伙包抄合围，再一举拿下玩家，最好不伤自己。",
+            tactics=["能拖就拖、虚与委蛇", "占上风才动手", "以人质/把柄要挟"],
+            abilities=["漕帮快刀，近身狠辣", "看人说谎、见风转舵"],
+            defenses=["练过横练功夫，皮糙肉厚，寻常拳脚难伤"],
+            weaknesses=[
                 "怕火（幼年火劫留下的阴影，见明火会本能退缩）",   # 秘密：对手看不到角色卡
                 "贪功怕死，局势一坏就先保命",
             ],
         ),
     }
 
-    会变层 = Ledger(
-        角色={
+    ledger = Ledger(
+        characters={
             "player": CharLedger(
-                姿势位置="坐在角落桌旁，背对墙",
-                物品={"dagger": Item(名="短刃", 类型="武器", 固有性质=["锋利"],
-                                     状态="完好", 位置="藏在披风下")},
-                行动速度=config.SPEED_PLAYER, 感知能力="正常", 行动值=0,
+                posture="坐在角落桌旁，背对墙",
+                items={"dagger": Item(name="短刃", kind="武器", traits=["锋利"],
+                                     state="intact", location="藏在披风下")},
+                speed=config.SPEED_PLAYER, perception="normal", gauge=0,
             ),
             "aqing": CharLedger(
-                姿势位置="站在玩家身侧",
-                行动速度=config.SPEED_NORMAL, 感知能力="正常", 行动值=0,
+                posture="站在玩家身侧",
+                speed=config.SPEED_NORMAL, perception="normal", gauge=0,
             ),
             "scar": CharLedger(
-                姿势位置="背靠吧台站立，俯视这桌",
-                物品={"knife": Item(名="快刀", 类型="武器", 固有性质=["刃利", "出鞘快"],
-                                    状态="完好", 位置="右手按在刀柄")},
-                行动速度=config.SPEED_NORMAL, 感知能力="正常", 行动值=0,
+                posture="背靠吧台站立，俯视这桌",
+                items={"knife": Item(name="快刀", kind="武器", traits=["刃利", "出鞘快"],
+                                    state="intact", location="右手按在刀柄")},
+                speed=config.SPEED_NORMAL, perception="normal", gauge=0,
             ),
         },
-        场景=SceneLedger(
-            空间关系=[
-                Condition(内容="刀疤背靠吧台", gates="防背后偷袭、退路受吧台限制", 可见性="public"),
-                Condition(内容="玩家背对墙坐在角落", gates="背后安全，但被堵则无退路", 可见性="public"),
+        scene=SceneLedger(
+            spatial=[
+                Condition(content="刀疤背靠吧台", gates="防背后偷袭、退路受吧台限制", visibility="public"),
+                Condition(content="玩家背对墙坐在角落", gates="背后安全，但被堵则无退路", visibility="public"),
             ],
-            场景事实=[
-                Condition(内容="后门上锁，唯一出口是前门", 可见性="public"),
-                Condition(内容="桌上有油灯，炉火将熄", gates="可取火源（明火）", 可见性="public"),
-                Condition(内容="刀疤其实在等同伙从外包抄，约数招内可到", 可见性="gm", 来源="剧本预设"),
+            scene_facts=[
+                Condition(content="后门上锁，唯一出口是前门", visibility="public"),
+                Condition(content="桌上有油灯，炉火将熄", gates="可取火源（明火）", visibility="public"),
+                Condition(content="刀疤其实在等同伙从外包抄，约数招内可到", visibility="gm", source="scenario"),
             ],
-            社会事实=[
-                Condition(内容="玩家欠漕帮一笔债，刀疤奉命来讨", gates="刀疤师出有名；还清或翻脸皆改变局面",
-                          可见性="public", 来源="剧本预设"),
+            social_facts=[
+                Condition(content="玩家欠漕帮一笔债，刀疤奉命来讨", gates="刀疤师出有名；还清或翻脸皆改变局面",
+                          visibility="public", source="scenario"),
             ],
         ),
-        阵营私有={"我方": {"计策": []}},
+        faction_private={"ally": {"plans": []}},
     )
 
     return Session(
         scene=Scene(
             id="tavern",
-            地点="雨夜酒馆，炉火将熄，后门通向马厩",
-            钩子="刀疤一手按在刀柄上，慢悠悠开口：「听说你欠漕帮的钱，今晚想怎么还？」",
-            在场=["player", "aqing", "scar"],
+            location="雨夜酒馆，炉火将熄，后门通向马厩",
+            hook="刀疤一手按在刀柄上，慢悠悠开口：「听说你欠漕帮的钱，今晚想怎么还？」",
+            present=["player", "aqing", "scar"],
         ),
-        世界观=世界观,
-        角色卡=角色卡,
-        会变层=会变层,
-        记忆={"aqing": [], "scar": [], "player": []},
-        公开日志=["【场景】雨夜酒馆，炉火将熄，后门通向马厩",
+        world=world,
+        cards=cards,
+        ledger=ledger,
+        memory={"aqing": [], "scar": [], "player": []},
+        public_log=["【scene】雨夜酒馆，炉火将熄，后门通向马厩",
                   "【开场】刀疤一手按在刀柄上，慢悠悠开口：「听说你欠漕帮的钱，今晚想怎么还？」"],
     )

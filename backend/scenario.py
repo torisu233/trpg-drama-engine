@@ -12,10 +12,10 @@ def scenario_from_session(s: Session, sid: str) -> Scenario:
     """从 Session 抽出静态/初始数据成 Scenario。"""
     return Scenario(
         id=sid,
-        世界观=s.世界观.model_copy(deep=True),
+        world=s.world.model_copy(deep=True),
         scene=s.scene.model_copy(deep=True),
-        角色卡={k: v.model_copy(deep=True) for k, v in s.角色卡.items()},
-        会变层=s.会变层.model_copy(deep=True),
+        cards={k: v.model_copy(deep=True) for k, v in s.cards.items()},
+        ledger=s.ledger.model_copy(deep=True),
     )
 
 
@@ -31,36 +31,36 @@ def _merge_fields(existing, new, fields) -> None:
             setattr(existing, f, nv)
 
 
-# 故意不含「扮演铁律」——它是用户手填的最高优先级铁律，AI 编剧不得碰（既有角色合并时保留、不被清）
-_CARD_FIELDS = ["名", "阵营", "扮演", "性别", "身份背景", "性格", "说话风格",
-                "动机目标", "行为偏好", "能力", "防御特性", "弱点"]
+# 故意不含「directive」——它是用户手填的最高优先级铁律，AI 编剧不得碰（既有角色合并时保留、不被清）
+_CARD_FIELDS = ["name", "faction", "controller", "gender", "backstory", "personality", "voice",
+                "motive", "tactics", "abilities", "defenses", "weaknesses"]
 
 
 def apply_author_reply(sc: Scenario, rep) -> str:
     """把编剧 agent 的区块更新「合并」进剧本正本（空栏＝不更动）。返回更新的区块名。"""
-    区 = rep.区块
+    区 = rep.block
     if 区 == "world" and rep.world:
-        _merge_fields(sc.世界观, rep.world, ["基调", "背景", "法则"])
+        _merge_fields(sc.world, rep.world, ["tone", "background", "laws"])
     elif 区 == "scene" and rep.scene:
-        _merge_fields(sc.scene, rep.scene, ["id", "地点", "钩子", "在场"])
+        _merge_fields(sc.scene, rep.scene, ["id", "location", "hook", "present"])
     elif 区 == "char" and rep.char and rep.char_id:
         cid = rep.char_id
-        if cid in sc.角色卡:
-            _merge_fields(sc.角色卡[cid], rep.char, _CARD_FIELDS)
+        if cid in sc.cards:
+            _merge_fields(sc.cards[cid], rep.char, _CARD_FIELDS)
         else:
-            sc.角色卡[cid] = rep.char
-        if cid not in sc.scene.在场:
-            sc.scene.在场.append(cid)
+            sc.cards[cid] = rep.char
+        if cid not in sc.scene.present:
+            sc.scene.present.append(cid)
     elif 区 == "ledger" and rep.ledger:
-        L = sc.会变层
-        for cid, cl in rep.ledger.角色.items():       # key 级合并：保留未提及的角色
-            L.角色[cid] = cl
-        for f in ["空间关系", "场景事实", "社会事实"]:   # 非空才替换
-            nv = getattr(rep.ledger.场景, f)
+        L = sc.ledger
+        for cid, cl in rep.ledger.characters.items():       # key 级合并：保留未提及的角色
+            L.characters[cid] = cl
+        for f in ["spatial", "scene_facts", "social_facts"]:   # 非空才替换
+            nv = getattr(rep.ledger.scene, f)
             if _nonempty(nv):
-                setattr(L.场景, f, nv)
-        if _nonempty(rep.ledger.阵营私有):
-            L.阵营私有.update(rep.ledger.阵营私有)
+                setattr(L.scene, f, nv)
+        if _nonempty(rep.ledger.faction_private):
+            L.faction_private.update(rep.ledger.faction_private)
     else:
         return "none"
     return 区
@@ -69,35 +69,35 @@ def apply_author_reply(sc: Scenario, rep) -> str:
 def session_from_scenario(sc: Scenario) -> Session:
     """把 Scenario 包成全新可玩 Session（深拷贝静态数据，初始化运行期字段）。
 
-    兜底：在场角色缺「初始局面（会变层）」的补默认，否则行动条无人可行动会死循环。
-    （玩家身份靠「扮演==玩家」识别，不依赖写死 id，故无需改写角色 id。）
+    兜底：在场角色缺「初始局面（ledger）」的补默认，否则行动条无人可行动会死循环。
+    （玩家身份靠「controller==player」识别，不依赖写死 id，故无需改写角色 id。）
     """
     scene = sc.scene.model_copy(deep=True)
-    角色卡 = {k: v.model_copy(deep=True) for k, v in sc.角色卡.items()}
-    会变层 = sc.会变层.model_copy(deep=True)
+    cards = {k: v.model_copy(deep=True) for k, v in sc.cards.items()}
+    ledger = sc.ledger.model_copy(deep=True)
 
     # 在场角色缺初始局面 → 补默认（玩家略快）
-    for cid in scene.在场:
-        if cid in 角色卡 and cid not in 会变层.角色:
-            spd = config.SPEED_PLAYER if 角色卡[cid].扮演 == "玩家" else config.SPEED_NORMAL
-            会变层.角色[cid] = CharLedger(行动速度=spd)
+    for cid in scene.present:
+        if cid in cards and cid not in ledger.characters:
+            spd = config.SPEED_PLAYER if cards[cid].controller == "player" else config.SPEED_NORMAL
+            ledger.characters[cid] = CharLedger(speed=spd)
 
-    记忆 = {cid: [] for cid in scene.在场 if cid in 角色卡}
-    公开日志, 日志 = [], []
-    if scene.地点:
-        line = f"【场景】{scene.地点}"
-        公开日志.append(line); 日志.append(engine.log_system_entry(line))
-    if scene.钩子:
-        line = f"【开场】{scene.钩子}"
-        公开日志.append(line); 日志.append(engine.log_system_entry(line))
+    memory = {cid: [] for cid in scene.present if cid in cards}
+    public_log, log = [], []
+    if scene.location:
+        line = f"【scene】{scene.location}"
+        public_log.append(line); log.append(engine.log_system_entry(line))
+    if scene.hook:
+        line = f"【开场】{scene.hook}"
+        public_log.append(line); log.append(engine.log_system_entry(line))
     s = Session(
         scene=scene,
-        世界观=sc.世界观.model_copy(deep=True),
-        角色卡=角色卡,
-        会变层=会变层,
-        记忆=记忆,
-        公开日志=公开日志,
-        日志=日志,
+        world=sc.world.model_copy(deep=True),
+        cards=cards,
+        ledger=ledger,
+        memory=memory,
+        public_log=public_log,
+        log=log,
     )
-    engine.prune_orphans(s)   # 在场/会变层里引用了不存在角色卡的孤儿 id → 剔除，保证下游 s.角色卡[cid] 安全
+    engine.prune_orphans(s)   # present/会变层里引用了不存在角色卡的孤儿 id → 剔除，保证下游 s.cards[cid] 安全
     return s

@@ -4,10 +4,10 @@ import { api } from '../api'
 export function emptyScenario(id = '未命名剧本') {
   return {
     id,
-    世界观: { 基调: '', 背景: '', 法则: [] },
-    scene: { id: 'scene', 地点: '', 钩子: '', 在场: [] },
-    角色卡: {},
-    会变层: { 角色: {}, 场景: { 空间关系: [], 场景事实: [], 社会事实: [] }, 阵营私有: {} },
+    world: { tone: '', background: '', laws: [] },
+    scene: { id: 'scene', location: '', hook: '', present: [] },
+    cards: {},
+    ledger: { characters: {}, scene: { spatial: [], scene_facts: [], social_facts: [] }, faction_private: {} },
   }
 }
 
@@ -51,7 +51,7 @@ export const useScenarioStore = defineStore('scenario', {
         this.draft = r.scenario
         this.lastMissing = r.missing || []
         this.lastDone = !!r.done
-        this.history.push({ role: '编剧', text: r.reply, meta: { 区块: r.区块, char_id: r.char_id } })
+        this.history.push({ role: '编剧', text: r.reply, meta: { block: r.block, char_id: r.char_id } })
         return r
       } finally {
         this.busy = false

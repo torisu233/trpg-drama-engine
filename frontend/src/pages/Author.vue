@@ -21,59 +21,59 @@
     <div class="split" style="margin-top:10px">
       <!-- 左：全可编辑面板 -->
       <div>
-        <!-- 世界观 -->
+        <!-- world -->
         <details class="panel sec" open>
-          <summary>世界观</summary>
-          <div class="field"><label>基调</label><input v-model="d.世界观.基调" placeholder="如：武侠，江湖恩怨" /></div>
-          <div class="field"><label>背景（约 200 字）</label><textarea v-model="d.世界观.背景" rows="3"></textarea></div>
-          <div class="field"><label>法则（影响裁决·人人皆知）</label>
-            <div class="hint muted small">法则=这个世界的公共规则，裁决与所有角色都看得到；勿写任何一方的秘密。秘密请用角色「弱点」或会变层里 gm 可见性的场景事实。</div>
-            <StrListEditor v-model="d.世界观.法则" ph="一条世界法则" label="添加法则" />
+          <summary>world</summary>
+          <div class="field"><label>tone</label><input v-model="d.world.tone" placeholder="如：武侠，江湖恩怨" /></div>
+          <div class="field"><label>background（约 200 字）</label><textarea v-model="d.world.background" rows="3"></textarea></div>
+          <div class="field"><label>laws（影响裁决·人人皆知）</label>
+            <div class="hint muted small">laws=这个世界的公共规则，裁决与所有角色都看得到；勿写任何一方的秘密。秘密请用角色「weaknesses」或会变层里 gm 可见性的场景事实。</div>
+            <StrListEditor v-model="d.world.laws" ph="一条世界法则" label="添加法则" />
           </div>
         </details>
 
-        <!-- 场景 -->
+        <!-- scene -->
         <details class="panel sec" open>
-          <summary>场景</summary>
+          <summary>scene</summary>
           <div class="field"><label>id</label><input v-model="d.scene.id" /></div>
-          <div class="field"><label>地点</label><input v-model="d.scene.地点" /></div>
-          <div class="field"><label>开场钩子</label><textarea v-model="d.scene.钩子" rows="2"></textarea></div>
+          <div class="field"><label>location</label><input v-model="d.scene.location" /></div>
+          <div class="field"><label>开场钩子</label><textarea v-model="d.scene.hook" rows="2"></textarea></div>
           <div class="field"><label>在场角色 id</label>
-            <StrListEditor v-model="d.scene.在场" ph="角色 id，如 player" label="加入在场" />
+            <StrListEditor v-model="d.scene.present" ph="characters id，如 player" label="加入在场" />
           </div>
         </details>
 
-        <!-- 角色卡 -->
+        <!-- cards -->
         <details class="panel sec" open>
-          <summary>角色卡（{{ Object.keys(d.角色卡).length }}）</summary>
-          <div v-for="(c, id) in d.角色卡" :key="id" class="subcard">
+          <summary>cards（{{ Object.keys(d.cards).length }}）</summary>
+          <div v-for="(c, id) in d.cards" :key="id" class="subcard">
             <div class="row-between">
-              <strong>{{ c.名 || '(未命名)' }} <span class="muted">[{{ id }}]</span></strong>
+              <strong>{{ c.name || '(未命名)' }} <span class="muted">[{{ id }}]</span></strong>
               <button class="mini" @click="removeChar(id)">删除角色</button>
             </div>
             <div class="row">
-              <div><label>名</label><input v-model="c.名" /></div>
-              <div><label>性别</label><input v-model="c.性别" /></div>
+              <div><label>name</label><input v-model="c.name" /></div>
+              <div><label>gender</label><input v-model="c.gender" /></div>
             </div>
             <div class="row">
-              <div><label>阵营</label>
-                <select v-model="c.阵营"><option>我方</option><option>敌</option><option>中立</option></select>
+              <div><label>faction</label>
+                <select v-model="c.faction"><option>ally</option><option>enemy</option><option>neutral</option></select>
               </div>
-              <div><label>扮演</label>
-                <select v-model="c.扮演"><option value="玩家">玩家</option><option value="agent">agent</option></select>
+              <div><label>controller</label>
+                <select v-model="c.controller"><option value="player">player</option><option value="agent">agent</option></select>
               </div>
             </div>
-            <label>身份背景（含外貌年龄）</label><textarea v-model="c.身份背景" rows="2"></textarea>
-            <label>扮演铁律（保底·最高优先，只喂角色 AI）</label>
-            <textarea v-model="c.扮演铁律" rows="2"
+            <label>backstory（含外貌年龄）</label><textarea v-model="c.backstory" rows="2"></textarea>
+            <label>directive（保底·最高优先，只喂角色 AI）</label>
+            <textarea v-model="c.directive" rows="2"
               placeholder="只填 1–3 条必须不折不扣遵守的核心铁律（如「绝不背叛玩家」「坚信自己是真命天子」）；日常性格/口吻请用下面的结构化字段，堆太多角色会变木。仅压人设、不越游戏规则。"></textarea>
-            <label>说话风格</label><input v-model="c.说话风格" />
-            <label>动机目标</label><input v-model="c.动机目标" />
-            <label>性格</label><StrListEditor v-model="c.性格" label="加" />
-            <label>行为偏好</label><StrListEditor v-model="c.行为偏好" label="加" />
-            <label>能力</label><StrListEditor v-model="c.能力" label="加" />
-            <label>防御特性</label><StrListEditor v-model="c.防御特性" label="加" />
-            <label>弱点（可放秘密，配 ledger 的 gm 线索）</label><StrListEditor v-model="c.弱点" label="加" />
+            <label>voice</label><input v-model="c.voice" />
+            <label>motive</label><input v-model="c.motive" />
+            <label>personality</label><StrListEditor v-model="c.personality" label="加" />
+            <label>tactics</label><StrListEditor v-model="c.tactics" label="加" />
+            <label>abilities</label><StrListEditor v-model="c.abilities" label="加" />
+            <label>defenses</label><StrListEditor v-model="c.defenses" label="加" />
+            <label>weaknesses（可放秘密，配 ledger 的 gm 线索）</label><StrListEditor v-model="c.weaknesses" label="加" />
           </div>
           <div class="row" style="margin-top:8px">
             <input v-model="newCharId" placeholder="新角色 id（如 aqing）" />
@@ -83,21 +83,21 @@
 
         <!-- 初始局面 -->
         <details class="panel sec">
-          <summary>初始局面（会变层）</summary>
-          <label>场景 · 空间关系</label><CondListEditor v-model="d.会变层.场景.空间关系" />
-          <label>场景 · 场景事实（gm 可埋秘密）</label><CondListEditor v-model="d.会变层.场景.场景事实" />
-          <label>场景 · 社会事实（债务/承诺/恩怨）</label><CondListEditor v-model="d.会变层.场景.社会事实" />
+          <summary>初始局面（ledger）</summary>
+          <label>scene · spatial</label><CondListEditor v-model="d.ledger.scene.spatial" />
+          <label>scene · scene_facts（gm 可埋秘密）</label><CondListEditor v-model="d.ledger.scene.scene_facts" />
+          <label>scene · social_facts（债务/承诺/恩怨）</label><CondListEditor v-model="d.ledger.scene.social_facts" />
 
-          <div class="subcard" v-for="(cl, id) in d.会变层.角色" :key="'L'+id">
+          <div class="subcard" v-for="(cl, id) in d.ledger.characters" :key="'L'+id">
             <strong class="muted">角色局面 [{{ id }}]</strong>
-            <label>姿势位置</label><input v-model="cl.姿势位置" />
+            <label>posture</label><input v-model="cl.posture" />
             <div class="row">
-              <div><label>行动速度</label><input type="number" v-model.number="cl.行动速度" /></div>
-              <div><label>感知能力</label><input v-model="cl.感知能力" /></div>
-              <div><label>初始行动值（先机）</label><input type="number" v-model.number="cl.行动值" /></div>
+              <div><label>speed</label><input type="number" v-model.number="cl.speed" /></div>
+              <div><label>perception</label><input v-model="cl.perception" /></div>
+              <div><label>初始行动值（先机）</label><input type="number" v-model.number="cl.gauge" /></div>
             </div>
-            <label>身心状况</label><CondListEditor v-model="cl.身心状况" />
-            <label>特殊情况（被绑/昏迷等）</label><CondListEditor v-model="cl.特殊情况" />
+            <label>conditions</label><CondListEditor v-model="cl.conditions" />
+            <label>status_effects（被绑/昏迷等）</label><CondListEditor v-model="cl.status_effects" />
           </div>
           <div class="row" style="margin-top:8px">
             <select v-model="newLedgerId">
@@ -106,7 +106,7 @@
             </select>
             <button @click="addLedger" :disabled="!newLedgerId">＋ 加局面</button>
           </div>
-          <div class="muted" style="margin-top:6px">物品、随身、阵营私有等细项可用下方「原始 JSON」编辑。</div>
+          <div class="muted" style="margin-top:6px">items、carried、阵营私有等细项可用下方「原始 JSON」编辑。</div>
         </details>
 
         <!-- 原始 JSON 万用编辑 -->
@@ -125,13 +125,13 @@
           <div class="card-title">与编剧对话</div>
           <div class="chat" ref="chatEl" style="flex:1">
             <div v-if="!s.history.length" class="muted">
-              告诉我你想要的剧本：世界、场景、角色…我会边问边填，左侧面板实时更新。<br>
+              告诉我你想要的剧本：世界、scene、characters…我会边问边填，左侧面板实时更新。<br>
               例：「武侠，落魄镖师在客栈被仇家堵上，有个莽撞的女队友」
             </div>
             <div v-for="(h, i) in s.history" :key="i" :class="h.role === '用户' ? 'me' : 'ai'">
               <strong>{{ h.role }}：</strong>{{ h.text }}
-              <span v-if="h.meta && h.meta.区块 && h.meta.区块 !== 'none'" class="tag">
-                改了 {{ h.meta.区块 }}{{ h.meta.char_id ? '/' + h.meta.char_id : '' }}
+              <span v-if="h.meta && h.meta.block && h.meta.block !== 'none'" class="tag">
+                改了 {{ h.meta.block }}{{ h.meta.char_id ? '/' + h.meta.char_id : '' }}
               </span>
             </div>
             <div v-if="s.busy" class="muted">…（编剧思考中）…</div>
@@ -166,7 +166,7 @@ const jsonText = ref('')
 const jsonErr = ref('')
 
 const ledgerCandidates = computed(() =>
-  d.value.scene.在场.filter((id) => !(id in d.value.会变层.角色)))
+  d.value.scene.present.filter((id) => !(id in d.value.ledger.characters)))
 
 onMounted(async () => {
   const id = route.params.id
@@ -181,25 +181,25 @@ watch(() => s.history.length, () => nextTick(() => {
 
 function addChar() {
   const id = newCharId.value.trim()
-  if (!id || id in d.value.角色卡) return
-  d.value.角色卡[id] = {
-    名: '', 阵营: '我方', 扮演: 'agent', 性别: '', 身份背景: '', 扮演铁律: '', 性格: [],
-    说话风格: '', 动机目标: '', 行为偏好: [], 能力: [], 防御特性: [], 弱点: [],
+  if (!id || id in d.value.cards) return
+  d.value.cards[id] = {
+    name: '', faction: 'ally', controller: 'agent', gender: '', backstory: '', directive: '', personality: [],
+    voice: '', motive: '', tactics: [], abilities: [], defenses: [], weaknesses: [],
   }
-  if (!d.value.scene.在场.includes(id)) d.value.scene.在场.push(id)
+  if (!d.value.scene.present.includes(id)) d.value.scene.present.push(id)
   newCharId.value = ''
 }
 function removeChar(id) {
-  delete d.value.角色卡[id]
-  d.value.scene.在场 = d.value.scene.在场.filter((x) => x !== id)
-  delete d.value.会变层.角色[id]
+  delete d.value.cards[id]
+  d.value.scene.present = d.value.scene.present.filter((x) => x !== id)
+  delete d.value.ledger.characters[id]
 }
 function addLedger() {
   const id = newLedgerId.value
-  if (!id || id in d.value.会变层.角色) return
-  d.value.会变层.角色[id] = {
-    姿势位置: '', 身心状况: [], 特殊情况: [], 物品: {}, 随身: [],
-    行动速度: 5, 感知能力: '正常', 行动值: 0,
+  if (!id || id in d.value.ledger.characters) return
+  d.value.ledger.characters[id] = {
+    posture: '', conditions: [], status_effects: [], items: {}, carried: [],
+    speed: 5, perception: 'normal', gauge: 0,
   }
   newLedgerId.value = ''
 }

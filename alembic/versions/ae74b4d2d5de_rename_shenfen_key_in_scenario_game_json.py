@@ -24,7 +24,7 @@ _TABLES = (("scenarios", "content"), ("games", "state"))
 
 
 def _rename_card_key(doc, old: str, new: str) -> bool:
-    cards = (doc or {}).get("角色卡")
+    cards = (doc or {}).get("cards")
     if not isinstance(cards, dict):
         return False
     changed = False
@@ -48,9 +48,9 @@ def _migrate(old: str, new: str) -> None:
 
 
 def upgrade() -> None:
-    """已入库的 scenarios.content / games.state 里 角色卡 的键 身分背景 → 身份背景（台→陆用词）。"""
-    _migrate("身分背景", "身份背景")
+    """已入库的 scenarios.content / games.state 里 cards 的键 身分背景 → backstory（台→陆用词）。"""
+    _migrate("身分背景", "backstory")
 
 
 def downgrade() -> None:
-    _migrate("身份背景", "身分背景")
+    _migrate("backstory", "身分背景")

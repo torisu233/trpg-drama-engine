@@ -1,4 +1,4 @@
-"""流程编排：逐拍推进 + 每拍维护（TTL/整理/摘要）。
+"""流程编排：逐拍推进 + 每拍维护（TTL/整理/summary）。
 
 驱动方式（皆服务 Web 前后端）：
 - advance：开局把场景推进到第一个玩家决策点（new_game 用，整段跑完不逐拍）
@@ -11,19 +11,19 @@ from . import engine, agents, config
 
 
 def _incoming_desc(s: Session, intent: Intent) -> str:
-    name = s.角色卡[intent.actor].名
-    return f"{name}：{intent.行动}"
+    name = s.cards[intent.actor].name
+    return f"{name}：{intent.action}"
 
 
 def _incoming_for_player(s: Session, intent: Intent) -> str:
-    """玩家被点名回应时看到的「来袭」描述。敌方**隐蔽**行动不泄露真意——
+    """玩家被点名回应时看到的「来袭」描述。敌方**covert**行动不泄露真意——
     表象要等裁决才生成，此刻只给非揭示的预警；开放行动与我方行动照常给具体内容。"""
-    card = s.角色卡.get(intent.actor)
-    name = card.名 if card else intent.actor
-    ally = bool(card and card.阵营 == "我方")
-    if getattr(intent, "隐蔽", False) and not ally:
+    card = s.cards.get(intent.actor)
+    name = card.name if card else intent.actor
+    ally = bool(card and card.faction == "ally")
+    if getattr(intent, "covert", False) and not ally:
         return f"{name} 似有异动，正冲你而来"
-    return f"{name}：{intent.行动}"
+    return f"{name}：{intent.action}"
 
 
 # ───────────────── 每拍维护 ─────────────────
@@ -31,7 +31,7 @@ async def _consolidate_if(grok: GrokClient, s: Session, label: str, conds: list,
                           threshold: int = config.CONSOLIDATE_THRESHOLD) -> list:
     mergeable, keep = [], []
     for c in conds:
-        if c.剩余拍数 is None and c.可见性 == "public":
+        if c.ttl is None and c.visibility == "public":
             mergeable.append(c)
         else:
             keep.append(c)
@@ -42,39 +42,39 @@ async def _consolidate_if(grok: GrokClient, s: Session, label: str, conds: list,
 
 
 async def _maybe_consolidate(grok: GrokClient, s: Session) -> None:
-    sc = s.会变层.场景
+    sc = s.ledger.scene
     # 场景三列保持高阈值（多条独立环境事实并存，降太低易误并）
-    sc.社会事实 = await _consolidate_if(grok, s, "社会事实/承诺/情报", sc.社会事实)
-    sc.场景事实 = await _consolidate_if(grok, s, "场景事实", sc.场景事实)
-    sc.空间关系 = await _consolidate_if(grok, s, "空间关系", sc.空间关系)
+    sc.social_facts = await _consolidate_if(grok, s, "social_facts/承诺/intel", sc.social_facts)
+    sc.scene_facts = await _consolidate_if(grok, s, "scene_facts", sc.scene_facts)
+    sc.spatial = await _consolidate_if(grok, s, "spatial", sc.spatial)
     # 角色身心状况：同一人状态易近义递进堆栈，用低阈值更早兜
-    for cid, cl in s.会变层.角色.items():
-        cl.身心状况 = await _consolidate_if(grok, s, f"{s.角色卡[cid].名} 身心状况",
-                                            cl.身心状况, threshold=config.CONSOLIDATE_THRESHOLD_STATE)
+    for cid, cl in s.ledger.characters.items():
+        cl.conditions = await _consolidate_if(grok, s, f"{s.cards[cid].name} conditions",
+                                            cl.conditions, threshold=config.CONSOLIDATE_THRESHOLD_STATE)
 
 
 async def _maybe_compress(grok: GrokClient, s: Session) -> None:
     W = config.KEEP_RECENT
-    for cid in s.scene.在场:
-        mem = s.记忆.get(cid, [])
-        if s.角色卡[cid].扮演 != "agent":
+    for cid in s.scene.present:
+        mem = s.memory.get(cid, [])
+        if s.cards[cid].controller != "agent":
             if len(mem) > 2 * W:
-                s.记忆[cid] = mem[-2 * W:]
+                s.memory[cid] = mem[-2 * W:]
             continue
         if len(mem) >= 2 * W:
-            evict, s.记忆[cid] = mem[:W], mem[W:]
-            s.摘要[cid] = await agents.summarize_memory(grok, s, cid, s.摘要.get(cid, ""), evict)
+            evict, s.memory[cid] = mem[:W], mem[W:]
+            s.summary[cid] = await agents.summarize_memory(grok, s, cid, s.summary.get(cid, ""), evict)
 
 
 async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, luck) -> None:
     adj = await agents.adjudicate(grok, s, intent, reaction, luck)
     engine.apply_delta(s, adj)
     narr = await agents.narrate(grok, s, adj, intent, reaction)
-    engine.distribute(s, narr.公开, narr.私密)
-    s.日志.append(engine.log_action_entry(s, intent, reaction, actor, narr.公开,
-                                          表象=adj.表象, 识破=adj.识破, 推进=adj.推进))
+    engine.distribute(s, narr.public, narr.private)
+    s.log.append(engine.log_action_entry(s, intent, reaction, actor, narr.public,
+                                          cover=adj.cover, detected=adj.detected, time_skip=adj.time_skip))
     engine.consume_turn(s, actor)
-    s.回合数 += 1
+    s.turn += 1
     engine.expire_transients(s)
     await _maybe_consolidate(grok, s)
     await _maybe_compress(grok, s)
@@ -82,53 +82,53 @@ async def _resolve_beat(grok: GrokClient, s: Session, intent, reaction, actor, l
 
 # ───────────────── 玩家拍 ─────────────────
 async def _player_action_beat(grok: GrokClient, s: Session, action: dict):
-    """玩家行动拍（生成器）：玩家行动自己可见 → 先推一帧；队友回应可见也补帧，遮住裁决+叙事。"""
+    """玩家行动拍（生成器）：玩家行动自己可见 → 先推一帧；队友回应可见也补帧，遮住裁决+narration。"""
     pid = engine.player_id(s)
     intent = Intent(actor=pid, **action)
     s.pending = None
     rtarget = engine.needs_reaction(s, intent)
-    s.进行中 = engine.log_pending_entry(s, pid, intent)           # 玩家=我方，行动文本可见
+    s.in_progress = engine.log_pending_entry(s, pid, intent)           # player=ally，行动文本可见
     yield s
     reaction = None
     if rtarget and rtarget != pid:
         reaction = await agents.character_reaction(grok, s, rtarget, _incoming_desc(s, intent))
         pend = engine.log_pending_entry(s, pid, intent, reaction)
-        if pend["反应文本"]:                                       # 队友回应可见 → 补帧
-            s.进行中 = pend
+        if pend["reaction_text"]:                                       # 队友回应可见 → 补帧
+            s.in_progress = pend
             yield s
     luck = engine.roll_luck() if engine.is_contested(s, intent, rtarget) else None
     await _resolve_beat(grok, s, intent, reaction, pid, luck)
-    s.进行中 = None
+    s.in_progress = None
     yield s
 
 
 async def _player_reaction_beat(grok: GrokClient, s: Session, reaction_payload: dict):
-    """玩家回应拍（生成器）：玩家回应自己可见 → 先推一帧，遮住裁决+叙事。"""
+    """玩家回应拍（生成器）：玩家回应自己可见 → 先推一帧，遮住裁决+narration。"""
     p = s.pending or {}
     intent = Intent(**p.get("intent", {}))
     actor = p.get("actor", "")
     luck = p.get("luck")
     s.pending = None
     react = Reaction(actor=engine.player_id(s), **reaction_payload)
-    s.进行中 = engine.log_pending_entry(s, actor, intent, react)  # 玩家回应可见（原行动者若我方其行动也可见）
+    s.in_progress = engine.log_pending_entry(s, actor, intent, react)  # 玩家回应可见（原行动者若我方其行动也可见）
     yield s
     await _resolve_beat(grok, s, intent, react, actor, luck)
-    s.进行中 = None
+    s.in_progress = None
     yield s
 
 
-# ───────────────── 推进（串流产生器） ─────────────────
+# ───────────────── time_skip（串流产生器） ─────────────────
 async def _advance_stream(grok: GrokClient, s: Session):
     """逐个 NPC 拍推进，每拍 yield 一次 session；停在玩家决策点或结束时 yield 后返回。"""
-    if s.结束:
+    if s.ended:
         return
     pid = engine.player_id(s)
     while True:
         end = engine.check_end(s)
         if end:
-            s.结束 = end
-            s.公开日志.append(f"【场景结束】{end}")
-            s.日志.append(engine.log_system_entry(f"【场景结束】{end}"))
+            s.ended = end
+            s.public_log.append(f"【场景结束】{end}")
+            s.log.append(engine.log_system_entry(f"【场景结束】{end}"))
             yield s
             return
         actor = engine.pick_actor(s)
@@ -150,19 +150,19 @@ async def _advance_stream(grok: GrokClient, s: Session):
             yield s
             return
         pend = engine.log_pending_entry(s, actor, intent)
-        if pend["行动文本"]:                       # 我方意图或敌方开放行动可见 → 提前显示，遮住后续
-            s.进行中 = pend
+        if pend["action_text"]:                       # 我方意图或敌方开放行动可见 → 提前显示，遮住后续
+            s.in_progress = pend
             yield s
         reaction = None
         if rtarget:
             reaction = await agents.character_reaction(grok, s, rtarget, _incoming_desc(s, intent))
             pend = engine.log_pending_entry(s, actor, intent, reaction)
-            if pend["反应文本"]:                   # 我方回应可见 → 补帧
-                s.进行中 = pend
+            if pend["reaction_text"]:                   # 我方回应可见 → 补帧
+                s.in_progress = pend
                 yield s
         luck = engine.roll_luck() if engine.is_contested(s, intent, rtarget) else None
         await _resolve_beat(grok, s, intent, reaction, actor, luck)
-        s.进行中 = None
+        s.in_progress = None
         yield s
 
 

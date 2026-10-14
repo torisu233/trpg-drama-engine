@@ -10,7 +10,7 @@
           {{ sc.title }}
           <span class="tag">{{ sc.visibility === 'published' ? '已发布' : '私人' }}</span>
         </div>
-        <div class="card-desc" v-if="sc.背景">{{ sc.背景 }}</div>
+        <div class="card-desc" v-if="sc.background">{{ sc.background }}</div>
         <div class="muted" v-if="admin && sc.author">作者：{{ sc.author }}</div>
         <div class="card-actions">
           <button @click="play(sc.id)" :disabled="!!starting">
@@ -26,19 +26,19 @@
       <div v-if="!s.list.length" class="muted">（还没有剧本，点「新建剧本」开始）</div>
     </div>
 
-    <h2>我的游戏{{ admin ? '（管理员：全部）' : '' }}</h2>
+    <h2>我的游戏{{ admin ? '（管理员：all）' : '' }}</h2>
     <div class="cards">
       <div class="card" v-for="g in game.games" :key="g.game_id">
-        <div class="card-title">{{ g.剧本名 || g.game_id }}</div>
-        <div class="muted">第 {{ g.回合数 }} 拍{{ g.结束 ? ' · 已结束' : '' }}
-          <template v-if="admin && g.owner"> · 玩家 {{ g.owner }}</template>
+        <div class="card-title">{{ g.scenario_name || g.game_id }}</div>
+        <div class="muted">第 {{ g.turn }} 拍{{ g.ended ? ' · 已结束' : '' }}
+          <template v-if="admin && g.owner"> · player {{ g.owner }}</template>
         </div>
         <div class="card-actions">
           <button @click="router.push('/play/' + g.game_id)">续玩</button>
           <button class="mini" @click="delGame(g.game_id)">删除</button>
         </div>
       </div>
-      <div v-if="!game.games.length" class="muted">（无）</div>
+      <div v-if="!game.games.length" class="muted">（none）</div>
     </div>
   </div>
 </template>
