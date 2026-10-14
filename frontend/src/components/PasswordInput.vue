@@ -8,8 +8,8 @@
       @input="$emit('update:modelValue', $event.target.value)"
       @keyup.enter="$emit('enter')"
     />
-    <button type="button" class="pwtoggle" @click="show = !show" :title="show ? '隐藏' : '显示'">
-      {{ show ? '隐藏' : '显示' }}
+    <button type="button" class="pwtoggle" @click="show = !show" :title="show ? 'Hide' : 'Show'">
+      {{ show ? 'Hide' : 'Show' }}
     </button>
   </div>
 </template>
@@ -19,7 +19,7 @@ import { ref } from 'vue'
 
 defineProps({
   modelValue: { type: String, default: '' },
-  placeholder: { type: String, default: '密码' },
+  placeholder: { type: String, default: 'Password' },
   autocomplete: { type: String, default: 'current-password' },
 })
 defineEmits(['update:modelValue', 'enter'])

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { api } from '../api'
 
-export function emptyScenario(id = '未命名剧本') {
+export function emptyScenario(id = 'Untitled scenario') {
   return {
     id,
     world: { tone: '', background: '', laws: [] },
@@ -14,8 +14,8 @@ export function emptyScenario(id = '未命名剧本') {
 export const useScenarioStore = defineStore('scenario', {
   state: () => ({
     list: [],                 // [{id,title,visibility,author,is_mine}]
-    draft: emptyScenario(),   // 剧本内容（前端持有，存盘才落地）
-    currentId: null,          // 正在编辑的 DB id；null=新建
+    draft: emptyScenario(),   // scenario content (held client-side until saved)
+    currentId: null,          // DB id being edited; null = new
     visibility: 'private',    // private | published
     history: [],
     busy: false,
@@ -44,14 +44,14 @@ export const useScenarioStore = defineStore('scenario', {
       this.lastDone = false
     },
     async sendMessage(msg) {
-      this.history.push({ role: '用户', text: msg })
+      this.history.push({ role: 'User', text: msg })
       this.busy = true
       try {
         const r = await api.authorTurn(this.draft, this.history, msg)
         this.draft = r.scenario
         this.lastMissing = r.missing || []
         this.lastDone = !!r.done
-        this.history.push({ role: '编剧', text: r.reply, meta: { block: r.block, char_id: r.char_id } })
+        this.history.push({ role: 'Writer', text: r.reply, meta: { block: r.block, char_id: r.char_id } })
         return r
       } finally {
         this.busy = false
@@ -73,7 +73,7 @@ export const useScenarioStore = defineStore('scenario', {
       await this.refreshList()
     },
     async copy(id) {
-      const r = await api.copyScenario(id)   // 服务端克隆为我的私人副本
+      const r = await api.copyScenario(id)   // server clones it as my private copy
       await this.refreshList()
       return r.id
     },

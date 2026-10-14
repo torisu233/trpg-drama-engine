@@ -5,13 +5,13 @@
       <div v-for="m in messages" :key="m.id"
            class="msg" :class="(m.sender_is_admin === mineIsAdmin) ? 'mine' : 'other'">
         <div class="bubble">{{ m.body }}</div>
-        <div class="msg-meta">{{ m.sender_is_admin ? '管理员' : '用户' }} · {{ fmt(m.created_at) }}</div>
+        <div class="msg-meta">{{ m.sender_is_admin ? 'Admin' : 'User' }} · {{ fmt(m.created_at) }}</div>
       </div>
     </div>
     <div class="chatinput" v-if="!readonly">
       <textarea v-model="draft" rows="2" :placeholder="placeholder"
                 @keydown.enter.exact.prevent="send"></textarea>
-      <button @click="send" :disabled="busy || !draft.trim()">发送</button>
+      <button @click="send" :disabled="busy || !draft.trim()">Send</button>
     </div>
   </div>
 </template>
@@ -21,10 +21,10 @@ import { ref, watch, nextTick, onMounted } from 'vue'
 
 const props = defineProps({
   messages: { type: Array, default: () => [] },
-  mineIsAdmin: { type: Boolean, default: false },   // 当前视角是否 admin（决定哪边是「我」）
+  mineIsAdmin: { type: Boolean, default: false },   // whether the current viewer is admin (decides which side is "me")
   busy: { type: Boolean, default: false },
-  placeholder: { type: String, default: '输入消息…（Enter 发送，Shift+Enter 换行）' },
-  emptyHint: { type: String, default: '还没有消息。' },
+  placeholder: { type: String, default: 'Type a message… (Enter to send, Shift+Enter for a new line)' },
+  emptyHint: { type: String, default: 'No messages yet.' },
   readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['send'])

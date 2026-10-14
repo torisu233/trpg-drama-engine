@@ -1,13 +1,13 @@
 <template>
   <div>
     <div class="row-between">
-      <h2>提交反馈 · 与管理员对话</h2>
-      <router-link to="/" style="align-self:center">← 返回</router-link>
+      <h2>Feedback · Chat with the admin</h2>
+      <router-link to="/" style="align-self:center">← Back</router-link>
     </div>
-    <p class="muted">有问题或建议直接发给管理员，管理员回复会显示在这里。</p>
+    <p class="muted">Send questions or suggestions straight to the admin; replies show up here.</p>
     <div class="panel">
       <ChatThread :messages="messages" :mine-is-admin="false" :busy="busy"
-                  empty-hint="还没有消息，发一条开始吧。" @send="send" />
+                  empty-hint="No messages yet. Send one to get started." @send="send" />
     </div>
   </div>
 </template>
@@ -27,10 +27,10 @@ async function load() {
 async function send(text) {
   busy.value = true
   try { await api.feedbackSend(text); await load() }
-  catch (e) { alert('发送失败：' + e.message) }
+  catch (e) { alert('Send failed: ' + e.message) }
   finally { busy.value = false }
 }
 
-onMounted(() => { load(); timer = setInterval(load, 8000) })   // 开着时每 8 秒拉新消息
+onMounted(() => { load(); timer = setInterval(load, 8000) })   // poll for new messages every 8 s while open
 onUnmounted(() => clearInterval(timer))
 </script>

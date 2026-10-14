@@ -1,14 +1,14 @@
 <template>
   <div>
     <div class="row-between">
-      <h2>反馈管理</h2>
-      <router-link to="/" style="align-self:center">← 返回</router-link>
+      <h2>Feedback inbox</h2>
+      <router-link to="/" style="align-self:center">← Back</router-link>
     </div>
 
     <div class="fb-split">
-      <!-- 左：用户会话列表 -->
+      <!-- Left: user thread list -->
       <div class="panel fb-list">
-        <div v-if="!threads.length" class="muted">还没有用户反馈。</div>
+        <div v-if="!threads.length" class="muted">No user feedback yet.</div>
         <div v-for="t in threads" :key="t.user_id"
              class="fb-item" :class="{ active: t.user_id === currentId }"
              @click="open(t.user_id)">
@@ -20,13 +20,13 @@
         </div>
       </div>
 
-      <!-- 右：选中用户的对话 -->
+      <!-- Right: conversation with the selected user -->
       <div class="panel fb-chat">
-        <div v-if="currentId === null" class="muted" style="padding:8px">← 选一个用户查看对话</div>
+        <div v-if="currentId === null" class="muted" style="padding:8px">← Pick a user to view the conversation</div>
         <template v-else>
-          <div class="card-title">与 {{ currentName }} 的对话</div>
+          <div class="card-title">Conversation with {{ currentName }}</div>
           <ChatThread :messages="messages" :mine-is-admin="true" :busy="busy"
-                      empty-hint="该用户还没有消息。" @send="reply" />
+                      empty-hint="This user has no messages yet." @send="reply" />
         </template>
       </div>
     </div>
@@ -58,7 +58,7 @@ async function loadThread(uid) {
 async function open(uid) {
   currentId.value = uid
   await loadThread(uid)
-  await loadThreads()           // 打开即标已读，刷新未读数
+  await loadThreads()           // opening marks it read; refresh unread counts
 }
 async function reply(text) {
   busy.value = true
@@ -66,7 +66,7 @@ async function reply(text) {
     await api.feedbackReply(currentId.value, text)
     await loadThread(currentId.value)
     await loadThreads()
-  } catch (e) { alert('回复失败：' + e.message) }
+  } catch (e) { alert('Reply failed: ' + e.message) }
   finally { busy.value = false }
 }
 
@@ -75,6 +75,6 @@ async function tick() {
   if (currentId.value !== null) await loadThread(currentId.value)
 }
 
-onMounted(() => { loadThreads(); timer = setInterval(tick, 8000) })   // 开着时每 8 秒刷新
+onMounted(() => { loadThreads(); timer = setInterval(tick, 8000) })   // refresh every 8 s while open
 onUnmounted(() => clearInterval(timer))
 </script>

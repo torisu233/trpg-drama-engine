@@ -2,16 +2,16 @@
   <div class="modal-backdrop" @click.self="$emit('close')">
     <div class="modal panel">
       <div class="row-between">
-        <h2 style="margin:0">修改密码</h2>
+        <h2 style="margin:0">Change password</h2>
         <button class="mini" @click="$emit('close')">✕</button>
       </div>
-      <label>原密码</label>
-      <PasswordInput v-model="oldp" autocomplete="current-password" placeholder="原密码" />
-      <label>新密码（≥6 位）</label>
-      <PasswordInput v-model="newp" autocomplete="new-password" placeholder="新密码" @enter="submit" />
+      <label>Current password</label>
+      <PasswordInput v-model="oldp" autocomplete="current-password" placeholder="Current password" />
+      <label>New password (6+ characters)</label>
+      <PasswordInput v-model="newp" autocomplete="new-password" placeholder="New password" @enter="submit" />
       <div v-if="err" class="threat" style="margin-top:8px">{{ err }}</div>
-      <div v-if="done" class="tag" style="color:var(--gold); margin-top:8px">✓ 已修改</div>
-      <button style="margin-top:10px" @click="submit" :disabled="busy || done">{{ busy ? '…' : '保存' }}</button>
+      <div v-if="done" class="tag" style="color:var(--gold); margin-top:8px">✓ Password changed</div>
+      <button style="margin-top:10px" @click="submit" :disabled="busy || done">{{ busy ? '…' : 'Save' }}</button>
     </div>
   </div>
 </template>
@@ -29,7 +29,7 @@ const done = ref(false)
 const busy = ref(false)
 
 async function submit() {
-  if (!oldp.value || !newp.value) { err.value = '请填原密码和新密码'; return }
+  if (!oldp.value || !newp.value) { err.value = 'Enter your current and new password'; return }
   busy.value = true
   err.value = ''
   try {
@@ -37,7 +37,7 @@ async function submit() {
     done.value = true
     setTimeout(() => emit('close'), 900)
   } catch (e) {
-    err.value = e.message || '修改失败'
+    err.value = e.message || 'Could not change password'
   } finally {
     busy.value = false
   }

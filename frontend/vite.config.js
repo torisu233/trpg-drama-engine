@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// dev：前端 5173，/api 代理到後端 8100（免 CORS 煩惱）
+// dev: frontend on 5173, /api proxied to the backend on 8100 (no CORS hassle)
 export default defineConfig({
   plugins: [vue()],
   server: {

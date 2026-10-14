@@ -17,7 +17,7 @@ const router = createRouter({
   ],
 })
 
-// admin 页守卫：非 admin 访问 → 回首页（后端仍各自硬把关，这只是 UX）
+// Admin route guard: non-admins are sent home (the backend still enforces access; this is just UX)
 router.beforeEach((to) => {
   if (to.meta.admin && !(auth.user && auth.user.is_admin)) return '/'
   return true

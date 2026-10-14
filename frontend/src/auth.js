@@ -1,10 +1,10 @@
-// 登录状态：JWT token + 当前用户。token 存 localStorage，请求带 Authorization: Bearer。
+// Auth state: JWT token + current user. Token lives in localStorage; requests send Authorization: Bearer.
 import { reactive } from 'vue'
 
 export const auth = reactive({
   token: localStorage.getItem('token') || '',
   user: null,      // { username, is_admin }
-  ready: false,    // 初次探测（/auth/me）是否完成
+  ready: false,    // whether the initial /auth/me probe has finished
 })
 
 export function setSession(token, user) {

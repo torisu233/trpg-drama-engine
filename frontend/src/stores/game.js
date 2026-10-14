@@ -5,7 +5,7 @@ export const useGameStore = defineStore('game', {
   state: () => ({ games: [], snap: null, busy: false, suggestion: null, suggesting: false }),
   actions: {
     async fetchSuggestion() {
-      // 玩家决策点才拉「AI 替你演」的参考行为；只读、不改局面。失败静默，不挡手动。
+      // Only fetch the "AI plays for you" suggestion at player decision points; read-only, never changes game state. Fails silently and never blocks manual input.
       const s = this.snap
       const t = s && s.pending && s.pending.type
       if (!s || s.ended || (t !== 'player_action' && t !== 'player_reaction')) { this.suggestion = null; return }
@@ -14,7 +14,7 @@ export const useGameStore = defineStore('game', {
       this.suggesting = true
       try {
         const r = await api.suggest(gid)
-        // 竞态守卫：回来时局面已变（已行动/换拍）就丢弃
+        // Race guard: drop the result if the game moved on (player acted / new beat) meanwhile
         if (this.snap && this.snap.game_id === gid && this.snap.turn === turn) {
           this.suggestion = (r && r.suggestion) || null
         }
@@ -36,9 +36,9 @@ export const useGameStore = defineStore('game', {
     },
     async act(action) {
       this.busy = true
-      this.suggestion = null            // 提交即清掉参考建议
+      this.suggestion = null            // submitting clears the suggestion
       try {
-        await api.actionStream(this.snap.game_id, action, (snap) => { this.snap = snap })  // 逐拍更新
+        await api.actionStream(this.snap.game_id, action, (snap) => { this.snap = snap })  // beat-by-beat updates
       } finally {
         this.busy = false
       }
