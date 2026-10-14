@@ -4,6 +4,7 @@ Games are always private: list/read/delete/act by owner / admin only. Starting a
 While streaming, each beat is saved with its own DB session (avoids lifetime issues of request dependencies inside a streaming response).
 """
 import json
+import logging
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -11,12 +12,14 @@ from sqlalchemy.orm import Session
 from .. import game_store, flow, engine, agents
 from .. import scenario as scen
 from ..deps import get_llm
+from ..llm_client import LLMError
 from ..db import get_db, SessionLocal
 from ..auth import current_user
 from ..models import Scenario
 from ..models_db import Scenario as DBScenario, User
 
 router = APIRouter(prefix="/api", tags=["game"])
+logger = logging.getLogger(__name__)
 
 
 def _owned_session(db: Session, gid: str, user: User):
@@ -67,17 +70,33 @@ def delete_game(gid: str, user: User = Depends(current_user), db: Session = Depe
 
 
 def _stream(gid: str, s, gen):
-    """Wrap the flow streaming generator into NDJSON beat by beat; each beat is saved with its own DB session."""
+    """Wrap the flow streaming generator into NDJSON beat by beat; each beat is saved with its own DB session.
+    If an LLM call fails mid-stream, the last completed beat is already saved; a final {"error": ...} line tells
+    the client, which can resume with POST /game/{gid}/continue."""
     async def body():
-        async for sess in gen:
-            if not sess.in_progress:                 # preview frames (for delayed reveal) are shown immediately but never persisted, so a dropped connection leaves no half-written state
-                db = SessionLocal()
-                try:
-                    game_store.save_game(db, gid, sess)
-                finally:
-                    db.close()
-            yield json.dumps(game_store.snapshot(gid, sess), ensure_ascii=False) + "\n"
+        try:
+            async for sess in gen:
+                if not sess.in_progress:                 # preview frames (for delayed reveal) are shown immediately but never persisted, so a dropped connection leaves no half-written state
+                    db = SessionLocal()
+                    try:
+                        game_store.save_game(db, gid, sess)
+                    finally:
+                        db.close()
+                yield json.dumps(game_store.snapshot(gid, sess), ensure_ascii=False) + "\n"
+        except LLMError as e:
+            logger.error(f"[game {gid}] stream aborted: {e}")
+            yield json.dumps({"error": "The AI model failed to finish this beat. Progress up to the last "
+                                       "completed beat is saved; press Continue to retry."}) + "\n"
     return StreamingResponse(body(), media_type="application/x-ndjson")
+
+
+@router.post("/game/{gid}/continue")
+async def continue_game(gid: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Resume NPC beats after a failed stream: only valid while nobody is waiting on the player (pending is empty)."""
+    _, s = _owned_session(db, gid, user)
+    if s.ended or s.pending:
+        return JSONResponse(game_store.snapshot(gid, s))
+    return _stream(gid, s, flow.stream_continue(get_llm(), s))
 
 
 @router.post("/game/{gid}/action")

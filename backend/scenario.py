@@ -48,7 +48,8 @@ def apply_author_reply(sc: Scenario, rep) -> str:
         if cid in sc.cards:
             _merge_fields(sc.cards[cid], rep.char, _CARD_FIELDS)
         else:
-            sc.cards[cid] = rep.char
+            # New character: still never accept a directive from the AI author
+            sc.cards[cid] = rep.char.model_copy(update={"directive": ""})
         if cid not in sc.scene.present:
             sc.scene.present.append(cid)
     elif block == "ledger" and rep.ledger:

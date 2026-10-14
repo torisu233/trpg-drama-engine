@@ -144,7 +144,7 @@ Rules (important):
 
 Output JSON only:
 {{"action":"what you want to do — including how, your expression, and (if any) your actual words, in your own voice; may include one small side gesture","target":"name of the main target (one of the present characters) or null","covert":false,"faction_switch":null}}"""
-    out = await llm.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=600)
+    out = await llm.call(prompt, Intent, temperature=config.TEMP_CHARACTER, max_tokens=1000)
     out.actor = cid
     return out
 
@@ -183,7 +183,7 @@ Rules:
 
 Output JSON only:
 {{"reaction":"one sentence: how you respond (including how), in your own voice"}}"""
-    out = await llm.call(prompt, Reaction, temperature=config.TEMP_CHARACTER, max_tokens=300)
+    out = await llm.call(prompt, Reaction, temperature=config.TEMP_CHARACTER, max_tokens=600)
     out.actor = cid
     return out
 
@@ -290,7 +290,7 @@ async def adjudicate(llm: LLMClient, s: Session, intent: Intent,
  "time_skip": "(only for a compressed exit or when dead time must be skipped: a one-line time-compression description; characters don't leave and results are recorded separately; otherwise must be empty)",
  "gm_summary": "one sentence of ground truth for the narrator (what actually happened this beat, and the unresolved tension it ends on: a threat/doubt/choice)"
 }}"""
-    return await llm.call(prompt, Adjudication, temperature=config.TEMP_ADJUDICATOR, max_tokens=1200)
+    return await llm.call(prompt, Adjudication, temperature=config.TEMP_ADJUDICATOR, max_tokens=2500)
 
 
 # ───────────────── GM / narration agent ─────────────────
@@ -410,7 +410,7 @@ async def narrate(llm: LLMClient, s: Session, adj: Adjudication, intent: Intent,
 
 Output JSON only:
 {{"public":"narration visible to everyone","private":{{"character name":"that character's unique extra perception (optional; omit the key if there is none)"}}}}"""
-    return await llm.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1000)
+    return await llm.call(prompt, Narration, temperature=config.TEMP_NARRATOR, max_tokens=1800)
 
 
 # ───────────────── rolling summary: compress old narration for continuity (story feel only, not facts) ─────────────────
@@ -434,7 +434,7 @@ Merge [Existing Summary] and [Beats That Followed] into **one concise, coherent*
 - Write in English.
 
 Output JSON only: {{"summary":"..."}}"""
-    out = await llm.call(prompt, Summary, temperature=0.4, max_tokens=400)
+    out = await llm.call(prompt, Summary, temperature=0.4, max_tokens=700)
     return out.summary
 
 
@@ -456,7 +456,7 @@ Current list:
 {lines}
 
 Output JSON only: {{"conditions":[{{"content":"concise fact","gates":"how it constrains what follows","visibility":"public"}}]}}"""
-    out = await llm.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=900)
+    out = await llm.call(prompt, ConsolidateOut, temperature=0.2, max_tokens=1500)
     return [Condition(content=c.content, gates=c.gates, visibility=c.visibility, source="consolidated")
             for c in out.conditions]
 

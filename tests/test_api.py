@@ -320,6 +320,77 @@ def test_suggest_null_when_not_player_turn(client, tavern_scenario, db):
         client.delete(f"/api/game/{gid}", headers=headers)
 
 
+class _BeatLLM(_FakeLLM):
+    """Offline fake that can resolve a whole NPC beat (valid narration/summary), or fail adjudication on demand."""
+    def __init__(self, fail_adjudication=False):
+        self.fail_adjudication = fail_adjudication
+
+    async def call(self, prompt, schema, **kw):
+        name = schema.__name__
+        if name == "Adjudication" and self.fail_adjudication:
+            from backend.llm_client import LLMError
+            raise LLMError("simulated: output truncated by max_tokens")
+        if name == "Narration":
+            return schema(public="The beat resolves.")
+        if name == "Summary":
+            return schema(summary="")
+        return await super().call(prompt, schema, **kw)
+
+
+def _ndjson(resp):
+    return [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+
+
+def test_stream_llm_failure_ends_with_error_line(client, tavern_scenario, monkeypatch):
+    """An LLM failure mid-stream ends the NDJSON with an {error} line instead of a broken connection; saved state stays playable."""
+    monkeypatch.setattr("backend.routes.game.get_llm", lambda: _BeatLLM(fail_adjudication=True))
+    sid, headers = tavern_scenario
+    gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=headers).json()["game_id"]
+    try:
+        r = client.post(f"/api/game/{gid}/action", json={"action": {"action": "Draws her blade", "target": "scar"}},
+                        headers=headers)
+        assert r.status_code == 200
+        lines = _ndjson(r)
+        assert "error" in lines[-1] and "Continue" in lines[-1]["error"]
+        snap = client.get(f"/api/game/{gid}", headers=headers).json()
+        assert snap["pending"] is not None or snap["ended"] is not None   # the last saved beat is still actionable
+    finally:
+        client.delete(f"/api/game/{gid}", headers=headers)
+
+
+def test_continue_resumes_until_player_turn(client, tavern_scenario, db, monkeypatch):
+    """A game left with nobody waiting on the player (interrupted advance) resumes via /continue until the player's turn."""
+    from backend import game_store
+    monkeypatch.setattr("backend.routes.game.get_llm", lambda: _BeatLLM())
+    sid, headers = tavern_scenario
+    gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=headers).json()["game_id"]
+    try:
+        row = game_store.load_game(db, gid)
+        s = game_store.session_of(row)
+        s.pending = None
+        game_store.save_game(db, gid, s)
+        r = client.post(f"/api/game/{gid}/continue", headers=headers)
+        assert r.status_code == 200
+        last = _ndjson(r)[-1]
+        assert "error" not in last
+        assert last["pending"]["type"] in ("player_action", "player_reaction")
+        # Already waiting on the player → /continue is a no-op that just returns the snapshot
+        again = client.post(f"/api/game/{gid}/continue", headers=headers).json()
+        assert again["pending"] == last["pending"]
+    finally:
+        client.delete(f"/api/game/{gid}", headers=headers)
+
+
+def test_continue_requires_ownership(client, tavern_scenario, make_user):
+    sid, owner = tavern_scenario
+    gid = client.post("/api/game/new", json={"scenario_id": sid}, headers=owner).json()["game_id"]
+    _, other = make_user("trudy")
+    try:
+        assert client.post(f"/api/game/{gid}/continue", headers=other).status_code == 404
+    finally:
+        client.delete(f"/api/game/{gid}", headers=owner)
+
+
 def test_suggest_requires_ownership(client, tavern_scenario, make_user):
     """Someone else's game → 404 (doesn't leak existence)."""
     sid, owner = tavern_scenario

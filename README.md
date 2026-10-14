@@ -58,7 +58,7 @@ docker compose up -d --wait      # PostgreSQL for the integration tests (host po
 pytest                           # runs with coverage (see pyproject.toml)
 ```
 
-**Strategy: test the deterministic machine exhaustively; isolate the non-deterministic LLM.** No test calls a real model, so the suite runs offline and CI needs no secrets. Current CI run: **113 tests, 88% line coverage** of `backend/` (live diagnostic scripts excluded).
+**Strategy: test the deterministic machine exhaustively; isolate the non-deterministic LLM.** No test calls a real model, so the suite runs offline and CI needs no secrets. Current CI run: **117 tests, 89% line coverage** of `backend/` (live diagnostic scripts excluded).
 
 | Layer | Files | What it covers |
 |---|---|---|
@@ -128,7 +128,7 @@ All `/api/*` routes except `/api/health`, `/api/auth/register` and `/api/auth/lo
 |---|---|
 | Auth | `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/change-password` |
 | Scenarios | `GET/POST /api/scenarios`, `GET/PUT/DELETE /api/scenarios/{id}`, `POST /api/scenarios/{id}/copy`, `POST /api/author/turn` |
-| Play | `GET /api/games`, `POST /api/game/new`, `GET /api/game/{id}`, `POST /api/game/{id}/action` (NDJSON stream), `POST /api/game/{id}/react` (NDJSON stream), `GET /api/game/{id}/suggest`, `DELETE /api/game/{id}` |
+| Play | `GET /api/games`, `POST /api/game/new`, `GET /api/game/{id}`, `POST /api/game/{id}/action` (NDJSON stream), `POST /api/game/{id}/react` (NDJSON stream), `POST /api/game/{id}/continue` (resume after a failed stream), `GET /api/game/{id}/suggest`, `DELETE /api/game/{id}` |
 | Feedback | `GET/POST /api/feedback`, `GET /api/feedback/threads`, `GET/POST /api/feedback/{user_id}` (admin) |
 
 ## License

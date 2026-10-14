@@ -43,11 +43,17 @@ async function postStream(url, body, onSnap) {
     while ((nl = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, nl).trim()
       buf = buf.slice(nl + 1)
-      if (line) onSnap(JSON.parse(line))
+      if (line) _emit(JSON.parse(line), onSnap)
     }
   }
   const last = buf.trim()
-  if (last) onSnap(JSON.parse(last))
+  if (last) _emit(JSON.parse(last), onSnap)
+}
+
+// A stream line is either a snapshot or a final {error} (the backend already saved the last completed beat)
+function _emit(obj, onSnap) {
+  if (obj && obj.error) throw new Error(obj.error)
+  onSnap(obj)
 }
 
 export const api = {
@@ -71,6 +77,7 @@ export const api = {
   delGame: (gid) => j('/api/game/' + gid, { method: 'DELETE' }),
   actionStream: (gid, action, onSnap) => postStream('/api/game/' + gid + '/action', { action }, onSnap),
   reactStream: (gid, reaction, onSnap) => postStream('/api/game/' + gid + '/react', { reaction }, onSnap),
+  continueStream: (gid, onSnap) => postStream('/api/game/' + gid + '/continue', {}, onSnap),
   suggest: (gid) => j('/api/game/' + gid + '/suggest'),   // AI suggests a move for the player (read-only)
   // feedback: user side (own thread only)
   feedbackMine: () => j('/api/feedback'),

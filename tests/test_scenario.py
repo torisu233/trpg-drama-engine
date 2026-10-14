@@ -56,6 +56,16 @@ def test_author_merge_preserves_directive():
     assert sc.cards["scar"].personality == ["cunning"]       # normal fields merge as usual
 
 
+def test_author_new_character_drops_directive():
+    """A brand-new character from the AI author never carries a directive (found in a live run: the model filled it like a goal)."""
+    sc = Scenario(id="t")
+    scen.apply_author_reply(sc, AuthorReply(reply="", block="char", char_id="ju",
+        char=CharCard(name="Ju", faction="ally", motive="Protect Han", directive="Survive the night")))
+    assert sc.cards["ju"].directive == ""
+    assert sc.cards["ju"].motive == "Protect Han"
+    assert "ju" in sc.scene.present
+
+
 # ───────────────── incomplete scenarios: degrade (prune orphans) + game-start gate ─────────────────
 def test_session_from_scenario_prunes_orphans():
     """present/ledger referencing non-existent character cards (orphans) → pruned at game start; ground_truth no longer KeyErrors."""

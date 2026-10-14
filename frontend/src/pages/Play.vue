@@ -130,6 +130,12 @@
         </div>
       </div>
 
+      <!-- Interrupted mid-advance (an LLM call failed): resume from the last saved beat -->
+      <div v-else-if="!g.busy" class="panel" style="margin-top:10px">
+        <div class="muted small">The scene was interrupted before your next turn.</div>
+        <button style="margin-top:8px" @click="doContinue" :disabled="g.busy">Continue</button>
+      </div>
+
       <details style="margin-top:12px">
         <summary class="muted">🔧 Ledger debug (includes GM secrets, god's-eye view)</summary>
         <pre>{{ snap.ledger_debug }}</pre>
@@ -220,6 +226,10 @@ async function doReact() {
   const r = { reaction: reaction.value.trim() || 'Brace and take the hit' }
   reaction.value = ''
   try { await g.react(r) } catch (e) { alert('Response error: ' + e.message) }
+}
+
+async function doContinue() {
+  try { await g.cont() } catch (e) { alert('Error: ' + e.message) }
 }
 </script>
 

@@ -35,19 +35,25 @@ export const useGameStore = defineStore('game', {
       this.snap = await api.getGame(gid)
     },
     async act(action) {
-      this.busy = true
       this.suggestion = null            // submitting clears the suggestion
-      try {
-        await api.actionStream(this.snap.game_id, action, (snap) => { this.snap = snap })  // beat-by-beat updates
-      } finally {
-        this.busy = false
-      }
+      await this._stream((gid, onSnap) => api.actionStream(gid, action, onSnap))  // beat-by-beat updates
     },
     async react(reaction) {
-      this.busy = true
       this.suggestion = null
+      await this._stream((gid, onSnap) => api.reactStream(gid, reaction, onSnap))
+    },
+    async cont() {
+      await this._stream((gid, onSnap) => api.continueStream(gid, onSnap))
+    },
+    async _stream(call) {
+      const gid = this.snap.game_id
+      this.busy = true
       try {
-        await api.reactStream(this.snap.game_id, reaction, (snap) => { this.snap = snap })
+        await call(gid, (snap) => { this.snap = snap })
+      } catch (e) {
+        // Drop any half-shown preview frame and show the last saved beat (the page then offers Continue)
+        try { await this.load(gid) } catch (_) {}
+        throw e
       } finally {
         this.busy = false
       }

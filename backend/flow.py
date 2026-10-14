@@ -182,6 +182,12 @@ async def stream_action(llm: LLMClient, s: Session, action: dict):
         yield s
 
 
+async def stream_continue(llm: LLMClient, s: Session):
+    """Resume NPC beats from the last saved beat (after a failed stream left nobody waiting on the player)."""
+    async for _ in _advance_stream(llm, s):
+        yield s
+
+
 async def stream_reaction(llm: LLMClient, s: Session, reaction: dict):
     async for _ in _player_reaction_beat(llm, s, reaction):
         yield s
