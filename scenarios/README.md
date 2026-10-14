@@ -1,20 +1,17 @@
-# scenarios/ — 开发者参考样例（**不是**数据源，运行时不读）
+# scenarios/: developer reference samples (**not** a data source; never read at runtime)
 
-本项目的**剧本、游戏、用户、反馈数据全部存在数据库**（本地 docker PostgreSQL:5433 / 云端 RDS），
-`game_store.py` 明写「**DB 为唯一真相，不再用内存缓存**」。
+All **scenarios, games, users and feedback messages live in the database** (local Docker PostgreSQL on port 5433, or the managed cloud database when it was deployed). `game_store.py` states it explicitly: **the database is the single source of truth; there is no in-memory cache.**
 
-本目录的 `*.json` **不被任何代码读取**：DB 初始化（首启）只 seed 一个 admin（来自 `ADMIN_*` 环境变量），
-**不再注入任何示范剧本**。剧本一律由用户经**编剧页/接口**创建后存进 DB。
+No code reads the `*.json` files in this directory. On first startup the database is seeded with a single admin account (from the `ADMIN_*` environment variables) and **no demo scenarios**. Scenarios are always created by users through the **authoring page or API** and stored in the database.
 
-所以这里的文件纯属**开发者/AI 参考样例**，展示剧本 JSON 的完整字段格式。想真正使用某个样例，
-得把它的内容通过编剧页/接口存进 DB（本目录放着不会自动生效）。
+The files here are purely **reference samples for developers (and AI assistants)** that show the full JSON shape of a scenario. To actually play one, save its content to the database through the authoring page or API; leaving it in this directory does nothing.
 
-## 完整字段参考
-[`示例-西幻战斗-断剑客栈.json`](示例-西幻战斗-断剑客栈.json) 刻意**用全了所有栏位**，可当编写剧本的模板：
-- `CharCard`：含 `扮演铁律`（用户手填的最高优先人设铁律，只喂角色 agent）等全部演戏/裁决字段；
-- `CharLedger`：`身心状况 / 特殊情况 / 随身 / 物品 / 姿势位置 / 行动速度…`；
-- `Condition`：`程度 / gates / 来源 / 生命周期 / 剩余拍数 / 创建回合` 及四种可见性
-  `public / gm / faction:<阵营> / self:<角色id>`；
-- `Item` 全字段、`阵营私有.计策`、三阵营（我方/敌/中立）齐备。
+## Full field reference
+[`example-fantasy-broken-sword-inn.json`](example-fantasy-broken-sword-inn.json) deliberately **uses every field**, so it works as a template for writing scenarios:
+- `CharCard`: every role-play and adjudication field, including `directive` (a user-written, highest-priority character rule that is only fed to the character agent);
+- `CharLedger`: `conditions / status_effects / carried / items / posture / speed / perception / gauge`;
+- `Condition`: `severity / gates / source / lifetime / ttl / created_turn`, plus all four visibility forms:
+  `public / gm / faction:<faction> / self:<char_id>`;
+- every `Item` field, `faction_private.<faction>.plans`, and all three factions (`ally` / `enemy` / `neutral`).
 
-字段定义以 `backend/models.py` 为权威；改字段名要连 models/engine/scenario/agents/前端/DB 一起动。
+`backend/models.py` is the authoritative definition of these fields. Renaming a field means updating models, engine, scenario, agents, the frontend and the database together.

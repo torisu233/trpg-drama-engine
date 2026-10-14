@@ -1,83 +1,201 @@
-# 部署 · CI/CD → 云端（GCP Cloud Run + Cloud SQL）
+# Deployment: CI/CD to the cloud
 
-`git push master` → 全自动测试、构建、推镜像、部署上云。本文记录架构、GCP 资源、流程与要点。
-（历史：曾用 AWS ECS Express + RDS，2026-06 迁至 GCP。）
+> **Status: the hosted services have been shut down.** There is no live URL. The CI `deploy` job is disabled and only runs when the repository variable `DEPLOY_ENABLED` is set to `'true'`; the `test` job still runs on every push and pull request. This document records how the deployment worked so it can be reproduced.
 
-## 流水线（一张图）
+The project was deployed in two phases, both driven by the same GitHub Actions pipeline (`git push master` -> test -> build -> push image -> deploy):
+
+1. **AWS phase**: ECR + ECS Express Mode + RDS PostgreSQL in a custom VPC, with keyless deploys via GitHub OIDC.
+2. **GCP phase** (from 2026-06): Artifact Registry + Cloud Run + Cloud SQL PostgreSQL, with keyless deploys via Workload Identity Federation.
+
+The application itself did not change between phases: `config.py` and Alembic read `DATABASE_URL` directly, so moving clouds only touched the workflow, the Dockerfile and this document.
+
+### Why it moved to GCP
+The migration commit does not record one specific trigger, but the differences that mattered for a low-traffic demo are documented below:
+- **Cost model**: Cloud Run scales to zero and bills nothing while idle, whereas ECS Express (Fargate + ALB) bills for as long as the service exists, which meant tearing it down between demos.
+- **Less networking**: Cloud Run reaches the internet directly and connects to Cloud SQL through the built-in connector (a unix socket), so there is no VPC, subnet or security-group setup to maintain.
+
+Shared pieces (both phases): the container image, migrations on startup, the GitHub Variables/Secrets pattern, and the principle that server-side secrets never reach the frontend, the repo or the image.
+
+---
+
+## Pipeline
+
+### GCP phase (final)
 ```
 git push master
    │
-   ├─ test    pytest（连 CI 的 Postgres service container；不打 Grok）
-   └─ deploy  WIF 换 GCP 凭证 → docker build → 推 Artifact Registry（tag: latest + git-sha）
-              → gcloud run deploy（--add-cloudsql-instances 挂 Cloud SQL socket、以运行 SA 身份、注入 env）
-              → 容器启动先 alembic upgrade head 建表，再 uvicorn
-PR / 其他分支：只跑 test（CD 只从 master）
+   ├─ test    pytest (against a Postgres service container in CI; never calls the LLM)
+   └─ deploy  [only if vars.DEPLOY_ENABLED == 'true']
+              WIF -> short-lived GCP credentials -> docker build
+              -> push to Artifact Registry (tags: latest + git sha)
+              -> gcloud run deploy (--add-cloudsql-instances mounts the Cloud SQL socket,
+                 runs as the runtime service account, injects env vars)
+              -> container starts with `alembic upgrade head`, then uvicorn
+Pull requests / other branches: test only (CD runs only from master)
 ```
-定义在 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)。架构模式 = **Registry 驱动**：Actions 负责 CI + 构建 + 推 AR + 触发部署；Cloud Run 负责跑。
 
-## 关键设计：无长期密钥（Workload Identity Federation）
-CI 不存任何 GCP service-account 密钥。每次跑时，GitHub 签发短命 OIDC token，经 **WIF** 联合身份**模拟部署服务账号**换取临时凭证。
-> 一句话：*"CI federates GitHub's OIDC token to impersonate a deploy service account — no static GCP keys in GitHub."*
+### AWS phase (earlier)
+```
+git push master
+   │
+   ├─ test            pytest (Postgres service container; never calls the LLM)
+   ├─ build-and-push  OIDC -> assume IAM role -> docker build -> push to ECR (tags: latest + git sha)
+   └─ deploy          OIDC -> aws-actions/amazon-ecs-deploy-express-service
+                      -> create/update the ECS Express service (custom VPC public subnets + app security group)
+                      -> container starts with `alembic upgrade head`, then uvicorn
+Pull requests / other branches: test only
+```
 
-## GCP 资源清单（project `<GCP_PROJECT_ID>` / number `<GCP_PROJECT_NUMBER>` / region `asia-northeast1`）
-| 资源 | 名称/标识 | 作用 |
+Defined in [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). The pattern is **registry-driven**: GitHub Actions does CI, builds the image, pushes it to the registry and triggers the deploy; the container platform (ECS, then Cloud Run) runs it.
+
+## Key design: no long-lived cloud keys
+CI stores no static cloud credentials in either phase. On each run GitHub issues a short-lived OIDC token, which is exchanged for temporary credentials:
+- **AWS**: the workflow assumes an IAM role via GitHub OIDC (`sts:AssumeRoleWithWebIdentity`). No AWS access keys in GitHub.
+- **GCP**: the OIDC token is federated through **Workload Identity Federation** to impersonate a deploy service account. No service-account key files in GitHub.
+
+---
+
+## GCP phase
+
+### Resources (project `<GCP_PROJECT_ID>` / number `<GCP_PROJECT_NUMBER>` / region `asia-northeast1`)
+| Resource | Name | Purpose |
 |---|---|---|
-| Artifact Registry（docker） | `trpg` | 存镜像；路径 `asia-northeast1-docker.pkg.dev/<GCP_PROJECT_ID>/trpg/trpg` |
-| Cloud Run 服务 | `trpg`（首次 deploy 时创建） | 跑容器、给公网 HTTPS `*.run.app`、缩容到零 |
-| Cloud SQL Postgres 16 | `trpg-pg`（db-f1-micro、ZONAL、无备份） | 唯一数据真相（users/scenarios/games）；库 `trpg`、用户 `trpg` |
-| 连接名 | `<GCP_PROJECT_ID>:asia-northeast1:trpg-pg` | Cloud Run `--add-cloudsql-instances` + DATABASE_URL socket |
-| 运行 SA | `trpg-run@<GCP_PROJECT_ID>.iam.gserviceaccount.com` | Cloud Run 运行身份；`roles/cloudsql.client` |
-| 部署 SA | `trpg-deployer@<GCP_PROJECT_ID>.iam.gserviceaccount.com` | GitHub 模拟；`run.admin` + `artifactregistry.writer` + 在运行 SA 上 `iam.serviceAccountUser`（actAs） |
-| WIF 池 / provider | `github-pool` / `github-provider` | GitHub OIDC 信任；`attribute-condition` 限 `repository_owner=='torisu233'`，principalSet 绑 `torisu233/trpg-drama-engine` |
+| Artifact Registry (Docker) | `trpg` | Stores images; path `asia-northeast1-docker.pkg.dev/<GCP_PROJECT_ID>/trpg/trpg` |
+| Cloud Run service | `trpg` (created on first deploy) | Runs the container, serves public HTTPS on `*.run.app`, scales to zero |
+| Cloud SQL Postgres 16 | `trpg-pg` (db-f1-micro, zonal, no backups) | Single source of truth (users / scenarios / games / feedback); database `trpg`, user `trpg` |
+| Connection name | `<GCP_PROJECT_ID>:asia-northeast1:trpg-pg` | Used by `--add-cloudsql-instances` and the socket-style `DATABASE_URL` |
+| Runtime service account | `trpg-run@<GCP_PROJECT_ID>.iam.gserviceaccount.com` | Identity Cloud Run runs as; `roles/cloudsql.client` |
+| Deploy service account | `trpg-deployer@<GCP_PROJECT_ID>.iam.gserviceaccount.com` | Impersonated by GitHub; `run.admin` + `artifactregistry.writer` + `iam.serviceAccountUser` (actAs) on the runtime SA |
+| WIF pool / provider | `github-pool` / `github-provider` | Trusts GitHub OIDC; `attribute-condition` restricts `repository_owner` to `<GITHUB_OWNER>`, and the principalSet is bound to `<GITHUB_OWNER>/trpg-drama-engine` |
 
-**线上 URL**：首次 deploy 后见 `deploy` job 末尾「打印服务 URL」步骤，或 `gcloud run services describe trpg --region asia-northeast1 --format='value(status.url)'`。
+### No VPC or network configuration needed
+- Cloud Run is fully managed and has direct outbound internet access (to pull from Artifact Registry and call the LLM API), so **no NAT and no custom VPC**.
+- Cloud SQL is reached through the **built-in connector** (`--add-cloudsql-instances` mounts a unix socket at `/cloudsql/<connection name>`), so **no private IP and no Serverless VPC Access connector**. This is considerably simpler than the AWS setup with its own public/private subnets.
 
-## 为什么不需要 VPC / 免网络配置
-- Cloud Run 全托管，出网直连公网（拉 AR / 连 DeepSeek）——**无需 NAT、无需自建 VPC**。
-- 连 Cloud SQL 用 **内建连接器**（`--add-cloudsql-instances` 挂 unix socket 到 `/cloudsql/<连接名>`）——**不需要私有 IP，也不需要 Serverless VPC 连接器**。比 AWS 那套（自建 VPC 公私子网）更省事。
+### Secrets and configuration (GitHub -> Cloud Run env vars)
+Repository Settings -> Secrets and variables -> Actions:
 
-## 密钥 / 配置（GitHub → Cloud Run env 注入）
-仓库 `torisu233/trpg-drama-engine` → Settings → Secrets and variables → Actions：
+**Variables** (plain text, `${{ vars.X }}`): `DEPLOY_ENABLED`, `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_RUN_SA`, `GCP_SQL_CONN`, `GCP_IMAGE`, `ADMIN_USERNAME`.
 
-**Variables（明文，`${{ vars.X }}`）**：`GCP_PROJECT_ID`、`GCP_REGION`、`GCP_WIF_PROVIDER`、`GCP_DEPLOY_SA`、`GCP_RUN_SA`、`GCP_SQL_CONN`、`GCP_IMAGE`、`ADMIN_USERNAME`。
-
-**Secrets（加密，`${{ secrets.X }}`）**：
-| secret | 作用 |
+**Secrets** (encrypted, `${{ secrets.X }}`):
+| Secret | Purpose |
 |---|---|
-| `DATABASE_URL` | `postgresql+psycopg2://trpg:<密码>@/trpg?host=/cloudsql/<GCP_PROJECT_ID>:asia-northeast1:trpg-pg`（socket 形；密码避免 URL 特殊字符或需编码） |
-| `JWT_SECRET` | 签发/校验 JWT（`python3 -c "import secrets;print(secrets.token_hex(32))"`） |
-| `ADMIN_PASSWORD` | 空库首启 seed 初始管理员 |
-| `LLM_API_KEY` | LLM(DeepSeek) 服务器端密钥 |
+| `DATABASE_URL` | `postgresql+psycopg2://trpg:<password>@/trpg?host=/cloudsql/<GCP_PROJECT_ID>:asia-northeast1:trpg-pg` (socket form; avoid URL special characters in the password or percent-encode them) |
+| `JWT_SECRET` | Signs and verifies JWTs (`python3 -c "import secrets; print(secrets.token_hex(32))"`) |
+| `ADMIN_PASSWORD` | Seeds the initial admin on first startup against an empty database |
+| `LLM_API_KEY` | Server-side key for the LLM provider (DeepSeek) |
 
-- 经 `gcloud run deploy --set-env-vars` 注入（用 `^~^` 改分隔符，避免 DATABASE_URL 里的 `= / @ :` 被误解析）。值明文存在 Cloud Run 服务配置（自己项目内可见）——接受此代价换灵活；要硬化改用 **Secret Manager + `--set-secrets`**。
-- 架构观：**对外 = 用户 auth 登录（JWT），对内 = AI key / DB 密码等服务器端密钥**，永不进前端、repo、镜像。
+- Injected with `gcloud run deploy --set-env-vars`, using `^~^` to change the delimiter so the `= / @ :` characters in `DATABASE_URL` aren't misparsed. The values are stored in plain text in the Cloud Run service configuration (visible only inside the project); this tradeoff was accepted for flexibility. To harden it, switch to **Secret Manager + `--set-secrets`**.
+- Architecture principle: **externally, users authenticate with JWTs; internally, the LLM key and database password are server-side secrets** that never reach the frontend, the repo or the image.
 
-## 数据库迁移（容器启动时）
-- 容器 CMD = `alembic upgrade head && exec uvicorn …`：每次启动先把 schema 升到最新（**幂等**：空库建表、已最新跳过），再起服务。`config.py` 与 `alembic/env.py` 都直接读 `DATABASE_URL`，socket 形原样可用。
-- 第一次部署后线上自动就有：四张表 + seed 的 admin（来自 `ADMIN_*`）；剧本不 seed，由用户经编剧页创建。
-- Dockerfile 须 COPY `alembic.ini` + `alembic/`。
-- **并发迁移**：Cloud Run 缩到零/多实例时，首个冷启动跑迁移；同时冷启多实例有轻微竞争（alembic 幂等，风险低）。要硬化：改由 CI 部署前单跑一步，或用 Cloud Run Job / advisory lock。
+### Concurrent migrations
+When Cloud Run scales from zero or runs several instances, the first cold start runs the migration. Several instances starting at once can race slightly (Alembic is idempotent, so the risk is low). To harden it, run migrations as a separate CI step before deploying, or use a Cloud Run Job or a Postgres advisory lock.
 
-## 容器要点（Dockerfile）
-- 监听 `0.0.0.0:${PORT:-8080}`（Cloud Run 注入 `PORT=8080`）；**非 root** 运行。
-- 多阶段：Node 只 build 前端 dist，最终镜像只含 Python + 后端 + dist；`main.py` 同源供 dist 与 `/api`。
-- CMD 用 exec 形式让 uvicorn 正确收 SIGTERM。
+### Deploying and verifying
+- **Automatic** (when enabled): push to `master` -> CI `test` passes -> `deploy` builds, pushes to Artifact Registry and runs `gcloud run deploy`.
+- Service URL: printed at the end of the `deploy` job, or `gcloud run services describe trpg --region asia-northeast1 --format='value(status.url)'`.
+- Verify: `/` (the SPA; register or log in to enter), `/api/health` -> `{"ok":true}`, register an account, and play a game (requires `LLM_API_KEY` to be injected).
 
-## 怎么部署 / 触发
-- **自动**：push 到 `master` → CI `test` 过 → `deploy` build+推 AR+`gcloud run deploy` → 上云。
-- 取 URL：`deploy` job 日志末尾，或 `gcloud run services describe trpg --region asia-northeast1 --format='value(status.url)'`。
-- 验证：`/`（简体 SPA，注册/登录后进）、`/api/health` → `{"ok":true}`、注册建号、实际玩一局（需 `LLM_API_KEY` 已注入）。
+### Cost and teardown
+- **Cloud Run scales to zero**: no charge without requests (cheaper than an always-on ECS service); `--max-instances 3` caps it.
+- **Cloud SQL bills continuously**: db-f1-micro is roughly $8-10/month (covered by free-trial credit at the time). **Deleting the Cloud Run service does not affect Cloud SQL**; the data lives in the database. Delete it only when it's no longer needed: `gcloud sql instances delete trpg-pg`.
+- Artifact Registry charges a small amount for storage (the image is small). Delete the service with `gcloud run services delete trpg --region asia-northeast1`.
 
-## 成本 / 拆除
-- **Cloud Run 缩容到零**：无请求时不计费（比 AWS ECS 常驻更省）；`--max-instances 3` 封顶。
-- **Cloud SQL 常驻计费**：db-f1-micro ~$8–10/月（免费试用额度内不花钱）。**删 Cloud Run 服务不影响 Cloud SQL**——数据活在 DB 里。彻底不用了才删：`gcloud sql instances delete trpg-pg`。
-- Artifact Registry 按存储量微收（镜像小）。删服务：`gcloud run services delete trpg --region asia-northeast1`。
+### One-time GCP setup (to reproduce, from Cloud Shell)
+Enable the APIs (run, artifactregistry, sqladmin, iam, iamcredentials, sts, cloudresourcemanager) -> create the Artifact Registry repository -> create the Cloud SQL instance, database and user -> create the two service accounts and grant their roles -> create the WIF pool and provider and bind the repository -> set the Variables and Secrets above in GitHub.
 
-## 一次性 GCP 设置（复现用，Cloud Shell）
-> 见提交历史 / 会话记录的完整 `gcloud` 清单：启用 API（run/artifactregistry/sqladmin/iam/iamcredentials/sts/cloudresourcemanager）→ 建 AR 仓库 → 建 Cloud SQL 实例+库+用户 → 建两个 SA + 授权 → 建 WIF 池/provider + 绑仓库 → 在 GitHub 设上面的 Variables/Secrets。
+---
 
-## 已知不足 / 下一步（可选硬化）
-- **密钥硬化**：DB 密码/JWT/LLM key 现明文在 Cloud Run 服务配置。可改 **Secret Manager + `--set-secrets`**。
-- **DB 连接 TLS**：走 Cloud SQL 连接器（socket）本身在 Google 内部加密；不额外配 sslmode。
-- **JWT 仅访问令牌**：无刷新/吊销，7 天到期重登。
-- **迁移并发**：多实例冷启动迁移竞争（见上）。
+## AWS phase
+
+### Resources (account `<AWS_ACCOUNT_ID>` / region `ap-northeast-1`)
+| Resource | Name | Purpose |
+|---|---|---|
+| ECR private repository | `<ECR_REPOSITORY>` | Stores Docker images |
+| OIDC provider | `token.actions.githubusercontent.com` | Lets AWS trust GitHub Actions |
+| CI role | `github-actions-deploy-role` | Assumed by GitHub via OIDC; trust policy limited to `repo:<GITHUB_OWNER>/*` |
+| └ managed policy | `AmazonEC2ContainerRegistryPowerUser` | Push to ECR |
+| └ inline policy | `ecs-express-deploy` | 12 `ecs:*` deploy actions + `iam:PassRole` (only for the two roles below, only to ECS) |
+| ECS task execution role | `ecsTaskExecutionRole` (service-role path) | ECS pulls images and writes logs |
+| ECS infrastructure role | `ecsInfrastructureRoleForExpressServices` | Lets Express Mode provision the ALB and networking |
+| ECS Express service | `trpg` (cluster `default`) | Runs the container and exposes a public HTTPS URL |
+| VPC | created with the console wizard: 2 AZs, 2 public + 2 private subnets, **no NAT gateway** | Isolates the app from RDS |
+| App subnets (2 public) | one per AZ | Run the ECS tasks (public IPs, outbound via the internet gateway to pull from ECR and call the LLM API) |
+| App security group | `trpg-app-sg` | Attached to the tasks; RDS only accepts traffic from it |
+| RDS security group | `trpg-rds-sg` | Inbound 5432 only from the app security group |
+| DB subnet group | `trpg-db-subnets` (2 private subnets) | Places RDS in private subnets |
+| RDS Postgres 16 | `trpg-db` (db.t4g.micro, not publicly accessible, database `trpg`) | Single source of truth (users / scenarios / games) |
+
+The public URL had the form `https://<service-id>.ecs.ap-northeast-1.on.aws/` (the ALB hostname changes when the service is recreated).
+
+### Network architecture: app in public subnets, RDS in private subnets, same VPC, no NAT
+```
+              Internet
+                 │  [Internet Gateway]
+ ┌───────────────┴──── VPC (DNS hostnames / resolution enabled) ──────────────────┐
+ │  Public subnets x2 AZ                         Private subnets x2 AZ             │
+ │  ┌──────────────────────────┐                ┌────────────────────────────┐    │
+ │  │ Express: ALB + Fargate    │                │  RDS Postgres 16            │    │
+ │  │ tasks have public IPs     │──── 5432 ─────▶│  publicly accessible: no    │    │
+ │  │ (pull ECR / call LLM),    │  app-SG ->     │  RDS-SG inbound only from   │    │
+ │  │ attached to app-SG        │  RDS-SG        │  app-SG                     │    │
+ │  └──────────────────────────┘                └────────────────────────────┘    │
+ └──────────────────────────────────────────────────────────────────────────────┘
+      No NAT gateway: the app needs outbound access and sits in public subnets
+      with a direct route to the IGW; RDS needs no outbound access at all.
+```
+- **Explicit subnets**: the deploy action passes `subnets` (the two public subnets), so Express creates an internet-facing ALB and gives tasks `assignPublicIP=true`. Only private subnets would require a NAT gateway.
+- **Saves about $33/month on NAT**: the component that needs outbound access (the app) is in a public subnet with a direct route to the internet gateway; the component that must be hidden (RDS) is in a private subnet and never goes outbound. Neither needs NAT.
+- **Security group to security group**: a self-managed `app-SG` is attached to the tasks (a known, fixed id, which avoids the chicken-and-egg problem with the security group Express would otherwise create), and `RDS-SG` allows inbound 5432 only from `app-SG`. RDS is never exposed to the internet.
+- **VPC requirements**: at least 2 public subnets (the Express ALB spans 2 AZs) and at least 2 private subnets (an RDS subnet group needs 2 AZs); `enableDnsHostnames` and `enableDnsSupport` must be on.
+
+### Secrets and configuration (environment variables, deliberately not Secrets Manager)
+All values were stored as **GitHub repository secrets** and injected by the deploy action:
+
+| Secret | Injected as | Purpose |
+|---|---|---|
+| `LLM_API_KEY` | env | Server-side key for the LLM provider (DeepSeek) |
+| `DATABASE_URL` | env | `postgresql+psycopg2://...@<RDS endpoint>:5432/trpg` (includes the database password) |
+| `JWT_SECRET` | env | Signs and verifies JWTs (at least 32 random bytes; e.g. `openssl rand -base64 48`) |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | env | Seed the initial admin on first startup against an empty database |
+| `APP_SUBNETS` | action `subnets` | The two public subnet ids (comma-separated); not sensitive, stored as a secret only to avoid hard-coding |
+| `APP_SG` | action `security-groups` | The app security group id |
+
+- **No AWS Secrets Manager**: rotating a key only means changing a GitHub secret, without touching AWS. The accepted tradeoff is that values are stored in plain text in the task definition (visible only within the account). Per the AWS docs, plain `environment-variables` require **no** Secrets Manager permissions on the execution role.
+- The old shared `APP_PASSWORD` gate was **replaced by user auth and removed** (middleware, config, env vars and publish script).
+
+### Container notes specific to ECS
+- **Gotcha: ECS Express defaults to container port 80.** It must be set to `container-port: 8080`; otherwise the ALB health check hits port 80 while the container listens on 8080 and the target is marked unhealthy. A non-root process can't bind port 80 (privileged), so the fix is to align ECS with 8080, not to change the app.
+- Health check path: `/api/health` (unauthenticated, very cheap, independent of the frontend).
+- With a single task (Express default `minTask=1`) there is no migration race; scaling to multiple tasks would need a migration gate or a one-off migration task.
+
+### Cost and teardown
+- **ECS Express = Fargate + ALB, billed while running.** Demo workflow: deploy -> capture screenshots or a recording -> **delete the service** (ECS -> `default` -> `trpg` -> Delete, which also removes the ALB). Pushing again recreates it.
+- **RDS bills separately** (db.t4g.micro is in the first-year free tier; roughly $12-15/month plus storage afterwards). **Deleting the ECS service does not affect RDS**, so data survives redeploys. Delete it only when no longer needed: `aws rds delete-db-instance --db-instance-identifier trpg-db --skip-final-snapshot --delete-automated-backups`.
+- **VPC, subnets and security groups are free** (NAT is the expensive part, and none was created).
+- Budget alerts were configured as a safety net.
+
+### Lessons learned
+- **App Runner stopped accepting new customers on 2026-04-30**, so the deployment used **ECS Express Mode** instead (the official replacement, which runs ECR images).
+- Container port 80 vs. the app's 8080 (see above).
+- IAM deploy permissions: the action actually needs 12 `ecs` actions (including `ListServiceDeployments` / `DescribeServiceDeployments` / `TagResource` / `UntagResource`, used to poll deployment progress and tag resources). Missing any of them causes `AccessDenied` at the "wait for deployment" step. `iam:PassRole` must be granted explicitly and scoped with `iam:PassedToService=ecs.amazonaws.com`.
+
+---
+
+## Shared: container and migrations
+
+### Database migrations at container startup
+- The container command is `alembic upgrade head && exec uvicorn ...`: every startup first brings the schema up to date (**idempotent**: creates tables on an empty database, no-op when already current), then starts the server. `config.py` and `alembic/env.py` both read `DATABASE_URL` directly, so the Cloud SQL socket form works unchanged.
+- After the first deploy the environment automatically has all four tables plus the seeded admin (from `ADMIN_*`). Scenarios are not seeded; users create them through the authoring page.
+- The Dockerfile must `COPY` `alembic.ini` and `alembic/`, or there is nothing to migrate inside the container.
+
+### Dockerfile
+- Listens on `0.0.0.0:${PORT:-8080}` (Cloud Run injects `PORT=8080`); runs as a **non-root** user.
+- Multi-stage build: a Node stage only builds the frontend `dist`; the final image contains just Python, the backend and `dist`. `main.py` serves `dist` and `/api` from the same origin.
+- The command uses exec form so uvicorn receives SIGTERM and shuts down cleanly.
+
+## Known limitations / possible hardening
+- **Secrets**: the database password, JWT secret and LLM key were stored in plain text in the service configuration (Cloud Run env vars / ECS task definition). Move to Secret Manager (`--set-secrets`) or AWS Secrets Manager / RDS IAM auth.
+- **Database TLS**: on GCP, the Cloud SQL connector (socket) is encrypted within Google's network, so no extra `sslmode` was configured. On AWS, `DATABASE_URL` did not enforce `sslmode=require`; RDS sat in private subnets so the exposure was small, but production should require it.
+- **JWT access tokens only**: no refresh tokens or revocation list; users log in again after 7 days.
+- **Migration concurrency**: multiple instances cold-starting at once can race on migrations (see above).

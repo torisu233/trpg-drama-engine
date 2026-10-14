@@ -1,63 +1,63 @@
-# 数据库 + Auth 设计（定稿）
+# Database and Auth Design (final)
 
-把本地 JSON 存储迁到 **PostgreSQL（云端 RDS）/ SQLAlchemy**，并加用户 auth。本地先做好再上云。
+Moves storage from local JSON files to **PostgreSQL via SQLAlchemy** (a managed cloud database in production) and adds user authentication. Everything was built and verified locally first, then deployed.
 
-## 总原则
-- **DB 是唯一真相**：除 **admin 账号、API key（来自环境变量）** 外，所有数据都在 DB。
-- **剧本只存 DB**，由用户经编剧页/接口创建；DB 初始化**不再 seed 任何示范剧本**。`scenarios/*.json` 只是开发者参考样例（运行时不读）。
-- **软删除**：不物理删行，用 `is_active` 字段标记启用/停用；查询默认 `is_active=true`。
-- **本地、测试、云端皆 PostgreSQL**（dev/prod 行为一致，不用 SQLite）：本地用 `docker-compose.yml` 起 PG（主机端口 **5433**，避开本机原生 PG 占的 5432），云端 RDS；靠 `DATABASE_URL` 切换。起库：`docker compose up -d --wait`。
-- DB 列名用英文（驱动/工具/Alembic 友好）；JSON 内容仍是中文 Pydantic dump。
+## Principles
+- **The database is the single source of truth.** Apart from the **admin account and API keys (which come from environment variables)**, all data lives in the database.
+- **Scenarios live only in the database.** Users create them through the authoring page or API; database initialization **does not seed any demo scenarios**. `scenarios/*.json` are developer reference samples only and are never read at runtime.
+- **Soft delete**: rows are never physically deleted; an `is_active` column marks them active or inactive, and queries default to `is_active=true`.
+- **PostgreSQL everywhere: local, tests and cloud** (identical dev/prod behavior, no SQLite). Locally, `docker-compose.yml` starts Postgres on host port **5433** (to avoid a native Postgres on 5432); in the cloud it is a managed instance. `DATABASE_URL` switches between them. Start the local database with `docker compose up -d --wait`.
+- Database column names are English (friendly to drivers, tools and Alembic); JSON columns hold Pydantic model dumps.
 
-## 三张表
-**users**：`id`(PK) · `username`(unique) · `password_hash`(bcrypt) · `is_admin`(bool) · `is_active`(bool, 软删) · `created_at`
+## Three tables
+**users**: `id` (PK) · `username` (unique) · `password_hash` (bcrypt) · `is_admin` (bool) · `is_active` (bool, soft delete) · `created_at`
 
-**scenarios**：`id`(int PK) · `title` · `author_id`(FK users) · `visibility`(`private`/`published`, 默认 private) · `content`(JSON=整个 Scenario) · `is_active` · `created_at`/`updated_at`
+**scenarios**: `id` (int PK) · `title` · `author_id` (FK users) · `visibility` (`private` / `published`, default `private`) · `content` (JSON = the whole `Scenario`) · `is_active` · `created_at` / `updated_at`
 
-**games**（游玩历史，**永远私人**）：`id`(str PK, uuid) · `user_id`(FK users) · `scenario_id`(FK scenarios, 可空) · `state`(JSON=整个 Session) · `turn_count`/`ended`(列表显示用) · `is_active` · `created_at`/`updated_at`
+**games** (play history, **always private**): `id` (str PK, UUID) · `user_id` (FK users) · `scenario_id` (FK scenarios, nullable) · `state` (JSON = the whole `Session`) · `turn_count` / `ended` (for list views) · `is_active` · `created_at` / `updated_at`
 
-关系：user 1—N scenarios（作者）/ games（拥有）；scenario 1—N games（来源，软删后游戏仍自带 Session 可玩）。
+Relationships: a user has many scenarios (as author) and many games (as owner); a scenario has many games (as their source). A game embeds its full `Session`, so it stays playable even after its scenario is soft-deleted.
 
-## 权限 / 可见性
-| 操作 | 规则 |
+## Permissions and visibility
+| Operation | Rule |
 |---|---|
-| 列剧本 | `published` 或 `author_id=我`；**admin 看全部** |
-| 读剧本 | published 人人可读；private 仅作者/admin |
-| 改/删剧本 | 仅作者 / admin（删=软删 `is_active=false`） |
-| 游戏 列/读/删 | 仅 `user_id=我` / admin（永远私人） |
-| **admin** | 看到并操作**所有**剧本与游玩历史；**前端在 admin 登录时显示每项的持有者(username)** |
+| List scenarios | `published` or `author_id = me`; **admins see all** |
+| Read a scenario | Anyone can read `published`; `private` only the author or an admin |
+| Update / delete a scenario | Author or admin only (delete = soft delete, `is_active=false`) |
+| List / read / delete games | Only `user_id = me`, or an admin (games are always private) |
+| **Admin** | Sees and manages **all** scenarios and play histories; **when an admin is logged in, the frontend shows each item's owner (username)** |
 
 ## Auth
-- 注册 `POST /api/auth/register {username,password}`（开放自助，username 3–32、password ≥6）→ bcrypt 哈希 → 发 JWT。
-- 登录 `POST /api/auth/login` → 发 **JWT**（含 user_id + is_admin，`JWT_SECRET` 签，TTL 7 天，无 refresh）。
-- `GET /api/auth/me` → 当前用户（前端探测 + 取 is_admin 决定是否显示持有者）。
-- 请求带 `Authorization: Bearer <jwt>`，**取代 `X-App-Password` 闸**。公开端点：`/api/health`、`/api/auth/register`、`/api/auth/login`。
-- admin **不进 DB 用户表**？→ 不，admin 是 DB 里的普通 user（`is_admin=true`），开机用 `ADMIN_USERNAME`/`ADMIN_PASSWORD` 幂等 seed。
-- 登出 = 前端丢 token。localStorage + Bearer（接受 XSS 代价）。
+- Register: `POST /api/auth/register {username, password}` (open self-service sign-up; username 3-32 characters, password at least 6) -> bcrypt hash -> issue a JWT.
+- Log in: `POST /api/auth/login` -> issue a **JWT** (contains `user_id` and `is_admin`, signed with `JWT_SECRET`, 7-day TTL, no refresh token).
+- `GET /api/auth/me` -> the current user (used by the frontend to probe login state and to read `is_admin`, which decides whether owners are shown).
+- Requests send `Authorization: Bearer <jwt>`, which **replaces the old shared `X-App-Password` gate**. Public endpoints: `/api/health`, `/api/auth/register`, `/api/auth/login`.
+- The admin is an ordinary row in the users table with `is_admin=true`, seeded idempotently at startup from `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+- Logout = the frontend discards the token. The token is kept in localStorage and sent as a Bearer header (accepting the XSS tradeoff).
 
-## 环境变量变化
-- **移除** `APP_PASSWORD`（被 auth 取代）。
-- **新增** `DATABASE_URL`、`JWT_SECRET`、`ADMIN_USERNAME`、`ADMIN_PASSWORD`。
-- 保留 LLM 密钥 `LLM_API_KEY`（旧名 GROK_API_KEY）。
+## Environment variable changes
+- **Removed** `APP_PASSWORD` (superseded by auth).
+- **Added** `DATABASE_URL`, `JWT_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`.
+- Kept the LLM key, `LLM_API_KEY` (formerly a provider-specific name).
 
-## 架构要点
-- **移除 `game_store._cache`**：DB 为唯一真相，每请求从 DB 载入→改→存回；串流时逐拍存回。多 ECS task 才一致（这正是上云要 DB 的原因）。
-- 并发改同一局 = last-write-wins（回合制单人，先不做乐观锁）。
-- Alembic **从头用**：schema 改动有迁移纪录、不丢数据。
+## Architecture notes
+- **Removed the in-memory `game_store._cache`.** With the database as the single source of truth, each request loads from the database, modifies, and saves back; streaming endpoints save after every beat. This is what keeps multiple container instances consistent, which is exactly why the cloud deployment needs a database.
+- Concurrent edits to the same game are last-write-wins (turn-based and single-player, so no optimistic locking yet).
+- **Alembic from day one**: every schema change has a migration and no data is lost.
 
-## 构建顺序（本地、逐步验证）
-1. **DB 地基**：`db.py`（engine/Session/Base/get_db）+ `models_db.py`（User/Scenario/Game）+ config `DATABASE_URL` + Alembic 首版迁移。
-2. **auth**：register/login/me + JWT + `current_user`/`current_admin` 依赖 + seed admin。
-3. **剧本→DB**：list/get/create/update/delete + 可见性/拥有权（剧本由用户自建存 DB；不 seed 示范剧本）。
-4. **游戏→DB**：移除 _cache、create/get/save/list/delete 绑 user。
-5. **前端**：登录/注册 + Bearer + 整数 id + admin 显示持有者。
-6. **测试**：DB fixture（连本地 docker PG 的测试库）+ auth fixture，重写 test_api/test_scenario；CI 加 `services: postgres` 容器跑测试（与生产同引擎）。
-7.（之后）RDS + 注入新 env + 部署。
+## Build order (local, verified step by step)
+1. **Database foundation**: `db.py` (engine / Session / Base / `get_db`) + `models_db.py` (User / Scenario / Game) + `DATABASE_URL` in config + the first Alembic migration.
+2. **Auth**: register / login / me + JWT + `current_user` / `current_admin` dependencies + admin seeding.
+3. **Scenarios -> database**: list / get / create / update / delete + visibility and ownership (users create their own scenarios in the database; no demo scenarios are seeded).
+4. **Games -> database**: remove `_cache`; create / get / save / list / delete scoped to the user.
+5. **Frontend**: login / register + Bearer header + integer ids + owner display for admins.
+6. **Tests**: a DB fixture (test database on the local Docker Postgres) + auth fixtures, rewrite `test_api` / `test_scenario`; CI adds a `services: postgres` container so tests run on the same engine as production.
+7. (Later) managed cloud database + new environment variables + deployment.
 
-## 后续功能（Part 2 之后，已实现）
-- **复制剧本**：`POST /api/scenarios/{sid}/copy` —— 校验可读(published/自己/admin)→ 克隆为我的 `private` 副本（标题加「（副本）」）。无新表。
-- **改密码**：`POST /api/auth/change-password {old_password,new_password}` —— 先验旧密码再存新哈希；JWT 无状态、不含密码，改后旧 token 仍有效到期。
-- **反馈聊天**（第 4 张表）：**feedback_messages** —— `id`(PK) · `thread_user_id`(FK users，会话属于哪个普通用户) · `sender_is_admin`(bool) · `body`(text) · `is_read`(bool，admin 是否已读该用户消息) · `created_at`。一普通用户一条会话线、统一对「admin」。
-  - 用户端 `GET/POST /api/feedback`（`current_user`，只碰自己那条线）；admin 端 `GET /api/feedback/threads`（列表+未读）、`GET /api/feedback/{user_id}`（读并标已读）、`POST /api/feedback/{user_id}`（回复），皆 `current_admin`。**权限全在后端，前端按角色显示入口只是 UX。**
-  - 前端统一独立页面：用户 `/feedback`、admin `/admin/feedback`（左用户列表+右对话），共用 `ChatThread` 组件；打开载入 + 8 秒轮询（无 websocket，小规模够用）。
-  - 新迁移 `f159fc1ec85e_feedback_messages`；云端靠容器启动 `alembic upgrade head` 自动建表。
+## Follow-up features (implemented)
+- **Copy a scenario**: `POST /api/scenarios/{sid}/copy`: checks that the caller can read it (published / own / admin), then clones it as the caller's own `private` copy (title suffixed with "(copy)"). No new table.
+- **Change password**: `POST /api/auth/change-password {old_password, new_password}`: verifies the old password, then stores the new hash. JWTs are stateless and don't contain the password, so existing tokens remain valid until they expire.
+- **Feedback chat** (fourth table): **feedback_messages**: `id` (PK) · `thread_user_id` (FK users; the regular user the thread belongs to) · `sender_is_admin` (bool) · `body` (text) · `is_read` (bool; whether an admin has read the user's message) · `created_at`. Each regular user has one thread, addressed to "the admins" collectively.
+  - User side: `GET/POST /api/feedback` (`current_user`, only their own thread). Admin side: `GET /api/feedback/threads` (list + unread counts), `GET /api/feedback/{user_id}` (read and mark as read), `POST /api/feedback/{user_id}` (reply), all behind `current_admin`. **All authorization is enforced in the backend; the frontend only shows or hides entry points by role, for UX.**
+  - Frontend: a dedicated page for users at `/feedback` and for admins at `/admin/feedback` (user list on the left, conversation on the right), sharing a `ChatThread` component. Messages load on open and then poll every 8 seconds (no WebSocket; enough at this scale).
+  - Migration `f159fc1ec85e_feedback_messages`; in the cloud the table is created automatically by `alembic upgrade head` at container startup.

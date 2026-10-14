@@ -1,20 +1,20 @@
 {
-  "id": "西幻·断剑客栈夜袭",
+  "id": "fantasy-broken-sword-inn-night-raid",
   "world": {
-    "tone": "剑与魔法的黑暗奇幻。佣兵、赏金与古老恩怨；钢铁与法术在烛火摇曳的边境交错，一言不合便血溅当场。",
-    "background": "这是个王权衰微、边境无法的年代。法师以法力凝盾御敌、引火唤雷，却需凝聚一瞬方能成法，且法力有限。重甲骑士刀枪难入，却笨重迟缓，关节与缝隙是破绽。治疗术稀缺难得，内创与法力反噬皆难速愈。圣堂以神誓与教令号令四方，暗地里却也藏污纳垢。佣兵与赏金猎人横行边镇，钱、命与旧仇，在这里常常等价。",
+    "tone": "Dark sword-and-sorcery fantasy. Mercenaries, bounties and old grudges; steel and spellcraft collide on a candlelit frontier where one wrong word ends in bloodshed.",
+    "background": "The crown is weak and the borderlands are lawless. Mages raise mana shields against blades and call down fire and lightning, but every spell needs a moment of focus and their mana runs out. Knights in heavy plate shrug off most weapons, yet they are slow and cumbersome, and their joints and visors are weak points. Healing magic is rare; internal wounds and spell backlash are slow to heal. The Cathedral commands the land through holy oaths and edicts, but it hides its own rot. Mercenaries and bounty hunters run the border towns, where coin, lives and old debts often trade at par.",
     "laws": [
-      "法师可凝『法力护盾』挡寻常刀剑；护盾未破时寻常攻击难伤其身，但破甲利器、穿透系法术或连续重击可击碎护盾。",
-      "重甲挡刀剑钝击难伤躯干要害，却笨重迟缓——移动转身慢，关节缝隙与面甲是破绽；雷系法术、钝击、精准穿刺可越甲伤人。",
-      "施法需短暂凝聚（被打断或重创则法术溃散）；法力有限，连施则竭。",
-      "轻功/迅捷者可瞬间欺近或脱身；迟缓者追之不及、退之不脱。",
-      "以势压人胜于硬拼：把柄、人质、真相、神誓可不战而屈人之兵，甚至化敌为友。"
+      "A mage can raise a 'mana shield' that stops ordinary blades; while the shield holds, ordinary attacks barely touch the mage, but armor-piercing weapons, penetrating spells or repeated heavy blows can shatter it.",
+      "Heavy plate turns aside cuts and blunt blows to the torso, but it is slow and clumsy: moving and turning take time, and joints, gaps and the visor are weak points. Lightning magic, blunt force and precise thrusts can hurt through the armor.",
+      "Casting requires a brief moment of focus (an interruption or a serious wound makes the spell collapse); mana is limited and runs dry under repeated casting.",
+      "Swift, agile fighters can close distance or slip away in an instant; slow ones cannot catch them or escape them.",
+      "Leverage beats brute force: blackmail, hostages, the truth or a holy oath can win without a fight, and can even turn an enemy into a friend."
     ]
   },
   "scene": {
     "id": "broken_sword_inn",
-    "location": "深夜的『断剑客栈』，火塘将熄，长桌横陈，吧台在西侧，唯一的木门在身后",
-    "hook": "你与莉薇正在火塘边低声议事，客栈木门被一脚踹开——一名重甲骑士提巨剑跨入，闷声透过面甲传来：『瑟兰。把「裂界残卷」交出来，或者把命留在这儿。』",
+    "location": "The Broken Sword Inn, late at night. The hearth is dying, long tables fill the room, the bar is on the west side, and the only wooden door is behind you.",
+    "hook": "You and Livia are talking quietly by the hearth when the inn door is kicked open. A knight in heavy plate steps in carrying a greatsword, his voice muffled by the visor: 'Seran. Hand over the Rift Codex, or leave your life here.'",
     "present": [
       "player",
       "livia",
@@ -23,146 +23,146 @@
   },
   "cards": {
     "player": {
-      "name": "瑟兰",
+      "name": "Seran",
       "faction": "ally",
       "controller": "player",
-      "gender": "男",
-      "backstory": "漂泊边境的佣兵剑士，三十出头，左臂有旧战伤；曾为圣堂效力，因一桩灭门旧案心生疑窦而出走，怀揣『裂界残卷』流亡至今。",
-      "directive": "绝不丢下莉薇独自逃命；一听『圣堂』之名便格外警觉、不轻信。",
+      "gender": "male",
+      "backstory": "A mercenary swordsman drifting along the frontier, in his early thirties, with an old war wound in his left arm. He once served the Cathedral, left after growing suspicious about an old massacre of a whole family, and has been on the run ever since, carrying the Rift Codex.",
+      "directive": "Never abandon Livia to save yourself; become especially wary and distrustful whenever the Cathedral is mentioned.",
       "personality": [
-        "沉稳",
-        "念旧",
-        "重诺"
+        "steady",
+        "loyal to old ties",
+        "keeps his word"
       ],
-      "voice": "话少而准，冷静克制，必要才出声。",
-      "motive": "查清灭门旧案的真凶、护住残卷与同伴；能脱身则脱身。",
+      "voice": "Few words, all of them precise; calm and restrained, speaks only when it matters.",
+      "motive": "Find the real culprit behind the old massacre and protect the codex and his companion; escape if he can.",
       "tactics": [
-        "先观察再出手",
-        "擅用环境与人心",
-        "能谈则谈，谈崩才动手"
+        "observe before acting",
+        "use the environment and people's motives",
+        "talk while talking works; fight only when it breaks down"
       ],
       "abilities": [
-        "行伍剑法，近身狠准",
-        "识破谎言",
-        "临危不乱"
+        "soldier's swordplay, precise and brutal up close",
+        "sees through lies",
+        "keeps his head in a crisis"
       ],
       "defenses": [
-        "久经战阵，不易自乱阵脚"
+        "a hardened veteran who rarely loses his composure"
       ],
       "weaknesses": [
-        "左臂旧伤，受力过猛或久战会脱力",
-        "护短——莉薇遇险会涉险相救"
+        "old left-arm wound gives out under heavy strain or in a long fight",
+        "protective to a fault: he will take risks to save Livia if she is in danger"
       ]
     },
     "livia": {
-      "name": "莉薇",
+      "name": "Livia",
       "faction": "ally",
       "controller": "agent",
-      "gender": "女",
-      "backstory": "游学法师，二十出头，背负法杖与一袋符卷；与瑟兰结伴半年，认他为可信之人，正想验证残卷里的古法。",
-      "directive": "施法前必先念一句咒文短句、露出凝聚的破绽；绝不先伤无辜。",
+      "gender": "female",
+      "backstory": "A traveling scholar-mage in her early twenties, carrying a staff and a pouch of spell scrolls. She has traveled with Seran for half a year, trusts him, and wants to test the ancient magic described in the codex.",
+      "directive": "Always speak a short incantation before casting, exposing the moment of focus; never be the first to harm an innocent.",
       "personality": [
-        "机敏",
-        "话多",
-        "心软"
+        "quick-witted",
+        "talkative",
+        "soft-hearted"
       ],
-      "voice": "语速快、爱用术语和俏皮话，紧张时更聒噪。",
-      "motive": "护住瑟兰与残卷，验证残卷里的古法知识。",
+      "voice": "Talks fast, loves jargon and wisecracks, and gets even chattier when nervous.",
+      "motive": "Protect Seran and the codex, and verify the ancient magic it describes.",
       "tactics": [
-        "远距法术支援",
-        "用迷雾/幻术制造混乱",
-        "关键时挡在同伴身前"
+        "ranged spell support",
+        "create confusion with fog and illusions",
+        "step in front of a companion at the critical moment"
       ],
       "abilities": [
-        "火焰与雷击法术",
-        "凝聚法力护盾",
-        "通晓古文与法理"
+        "fire and lightning spells",
+        "raises a mana shield",
+        "reads ancient scripts and understands magical theory"
       ],
       "defenses": [
-        "法力护盾可挡寻常刀剑（护盾未破时）"
+        "mana shield stops ordinary blades (while it holds)"
       ],
       "weaknesses": [
-        "施法需凝聚一瞬，被打断则法术溃散",
-        "法力有限，连施则竭，盾随之转薄"
+        "casting needs a moment of focus; if interrupted, the spell collapses",
+        "limited mana runs dry under repeated casting, and the shield thins with it"
       ]
     },
     "knight": {
-      "name": "加雷斯",
+      "name": "Gareth",
       "faction": "enemy",
       "controller": "agent",
-      "gender": "男",
-      "backstory": "圣堂派来的重甲骑士，四十上下，面甲终年不卸；家族当年灭于一桩『叛教』旧案，他奉命追索裂界残卷、了结相关之人，自认替天行道。",
-      "directive": "认定目标便穷追不舍；最听不得替『圣堂』开脱的辩解——除非铁证当前。",
+      "gender": "male",
+      "backstory": "A heavily armored knight sent by the Cathedral, around forty, who never removes his visor. His family was wiped out years ago in a so-called 'heresy' case. He has orders to recover the Rift Codex and deal with everyone connected to it, and believes he is doing heaven's work.",
+      "directive": "Once he picks a target, he pursues it relentlessly; he cannot stand anyone excusing the Cathedral unless hard proof is in front of him.",
       "personality": [
-        "冷硬",
-        "执念极深",
-        "自负正义"
+        "cold and hard",
+        "deeply obsessive",
+        "self-righteous"
       ],
-      "voice": "闷声透过面甲、字字如铁，一开口便是『交出残卷』与那桩旧案。",
-      "motive": "夺回裂界残卷、了结持卷之人；为此不惜砸了客栈、伤及旁人。",
+      "voice": "Muffled through the visor, every word like iron; he opens with 'hand over the codex' and the old case.",
+      "motive": "Take back the Rift Codex and finish whoever carries it, even if it means wrecking the inn and hurting bystanders.",
       "tactics": [
-        "堵死退路、正面强攻",
-        "巨剑硬碰、欺身近战",
-        "以旧案与圣堂权威施压"
+        "block the exits and attack head-on",
+        "trade heavy blows with the greatsword and press in close",
+        "lean on the old case and the Cathedral's authority"
       ],
       "abilities": [
-        "巨剑重击，势大力沉",
-        "重甲冲撞、封路欺身",
-        "久经沙场、缠斗老到"
+        "crushing greatsword strikes",
+        "armored charges that cut off escape routes",
+        "seasoned, cunning in a drawn-out fight"
       ],
       "defenses": [
-        "全身重甲，寻常刀剑钝器难伤躯干要害"
+        "full plate: ordinary blades and clubs barely hurt his torso"
       ],
       "weaknesses": [
-        "重甲笨重迟缓，关节缝隙与面甲是破绽（雷击/钝击/精准穿刺可越甲）",
-        "若令其采信『追错了真凶』，杀意便动摇、招式发狠而失章法"
+        "heavy armor makes him slow; joints, gaps and the visor are weak points (lightning, blunt force and precise thrusts get through)",
+        "if he comes to believe he has been hunting the wrong culprit, his resolve to kill wavers and his attacks turn wild and undisciplined"
       ]
     },
     "marta": {
-      "name": "玛塔",
+      "name": "Marta",
       "faction": "neutral",
       "controller": "agent",
-      "gender": "女",
-      "backstory": "断剑客栈的老板娘，五十出头，泼辣精明；在这边境开店多年，黑白两道都不愿得罪，只认银币和自家屋子。",
-      "directive": "先护客栈与自己，绝不白替任何一方卖命；给够好处才肯出手或指路。",
+      "gender": "female",
+      "backstory": "Owner of the Broken Sword Inn, in her early fifties, sharp-tongued and shrewd. She has run the place on the frontier for years, avoids crossing either the law or the outlaws, and cares only about silver and her own roof.",
+      "directive": "Protect the inn and herself first; never risk her neck for either side for free. She only helps or points the way if the price is right.",
       "personality": [
-        "泼辣",
-        "现实",
-        "怕惹祸"
+        "sharp-tongued",
+        "pragmatic",
+        "avoids trouble"
       ],
-      "voice": "嗓门大、市井泼辣，满口生意与规矩，话锋随利害转。",
-      "motive": "保住客栈不被砸、自己别送命，能从乱局里捞一笔最好。",
+      "voice": "Loud and streetwise, always talking business and house rules; her tune changes with her interests.",
+      "motive": "Keep the inn from being wrecked and herself alive, and ideally profit from the chaos.",
       "tactics": [
-        "和稀泥、两边不得罪",
-        "拿酒/intel/后门当筹码谈条件",
-        "不妙就躲柜台后或喊镇卫"
+        "smooth things over and stay on everyone's good side",
+        "bargain with drinks, intel and the back door",
+        "if things go badly, hide behind the bar or shout for the town guard"
       ],
       "abilities": [
-        "消息灵通、识人",
-        "柜台下藏着上了弦的弩",
-        "熟知客栈每条暗道"
+        "well-informed and a good judge of people",
+        "a loaded crossbow hidden under the bar",
+        "knows every hidden passage in the inn"
       ],
       "defenses": [
-        "老江湖，不易被唬住"
+        "an old hand who is hard to bluff"
       ],
       "weaknesses": [
-        "贪财，可用银币或包赔损失收买",
-        "怕客栈遭殃、怕沾人命，一吓就软"
+        "greedy: can be bought with silver or a promise to cover damages",
+        "afraid for the inn and of having blood on her hands; folds when scared"
       ]
     }
   },
   "ledger": {
     "characters": {
       "player": {
-        "posture": "立于火塘边，侧身对着木门",
+        "posture": "Standing by the hearth, turned sideways toward the door",
         "conditions": [
           {
-            "content": "左臂旧战伤隐隐作痛，久战或受重击会脱力",
-            "gates": "左臂受力过猛、或缠斗数回合后，该臂招式力道骤泄",
-            "severity": "隐伤·未发作",
+            "content": "Old war wound in the left arm aches; it gives out in a long fight or under a heavy blow",
+            "gates": "If the left arm takes heavy strain, or after several rounds of close fighting, its strikes suddenly lose strength",
+            "severity": "latent, not yet flaring",
             "visibility": "self:player",
             "source": "scenario",
-            "lifetime": "持久（旧伤）",
+            "lifetime": "persistent (old wound)",
             "ttl": null,
             "created_turn": null
           }
@@ -170,34 +170,34 @@
         "status_effects": [],
         "items": {
           "sword": {
-            "name": "长剑",
-            "kind": "武器",
+            "name": "Longsword",
+            "kind": "weapon",
             "traits": [
-              "锋利",
-              "趁手"
+              "sharp",
+              "well-balanced"
             ],
             "state": "intact",
-            "location": "悬在腰侧"
+            "location": "hanging at his hip"
           },
           "scroll": {
-            "name": "裂界残卷",
-            "kind": "信物",
+            "name": "Rift Codex",
+            "kind": "keepsake",
             "traits": [
-              "古法残卷",
-              "事关灭门旧案的铁证"
+              "fragment of an ancient grimoire",
+              "hard evidence in the old massacre case"
             ],
             "state": "intact",
-            "location": "贴身收在怀里"
+            "location": "tucked inside his coat"
           }
         },
         "carried": [
           {
-            "content": "披风内衬缝着一柄备用短匕",
-            "gates": "近身时可骤然拔出偷袭，对手多半料不到",
+            "content": "A spare dagger is sewn into the lining of his cloak",
+            "gates": "Can be drawn suddenly at close range; opponents rarely see it coming",
             "severity": null,
             "visibility": "self:player",
             "source": "scenario",
-            "lifetime": "持久",
+            "lifetime": "persistent",
             "ttl": null,
             "created_turn": null
           }
@@ -207,15 +207,15 @@
         "gauge": 0
       },
       "livia": {
-        "posture": "立于瑟兰身侧半步后，法杖在手",
+        "posture": "Half a step behind Seran, staff in hand",
         "conditions": [
           {
-            "content": "法力尚算充沛，但只够连施两三回合",
-            "gates": "连续施法后法力将竭、护盾转薄；竭则数回合内难再成法",
-            "severity": "充沛",
+            "content": "Mana is fairly full, but only enough for two or three rounds of continuous casting",
+            "gates": "After repeated casting her mana runs low and the shield thins; once drained, she cannot cast again for several rounds",
+            "severity": "full",
             "visibility": "faction:ally",
             "source": "scenario",
-            "lifetime": "随施法递减",
+            "lifetime": "depletes with casting",
             "ttl": null,
             "created_turn": null
           }
@@ -223,23 +223,23 @@
         "status_effects": [],
         "items": {
           "staff": {
-            "name": "法杖",
-            "kind": "法器",
+            "name": "Staff",
+            "kind": "focus",
             "traits": [
-              "导引法力",
-              "杖端嵌着引火的火晶"
+              "channels mana",
+              "a fire crystal set in its tip"
             ],
             "state": "intact",
-            "location": "握在右手"
+            "location": "in her right hand"
           },
           "scrolls": {
-            "name": "符卷袋",
-            "kind": "法器",
+            "name": "Scroll pouch",
+            "kind": "focus",
             "traits": [
-              "几张一次性符卷：迷雾、滞步"
+              "a few single-use scrolls: fog, slow"
             ],
             "state": "intact",
-            "location": "挂在腰间"
+            "location": "hanging at her waist"
           }
         },
         "carried": [],
@@ -248,30 +248,30 @@
         "gauge": 0
       },
       "knight": {
-        "posture": "跨在踹开的木门内，巨剑斜指地面，堵住唯一出口",
+        "posture": "Standing just inside the kicked-in door, greatsword angled at the floor, blocking the only exit",
         "conditions": [],
         "status_effects": [
           {
-            "content": "一身重甲在身，行动迟缓笨重",
-            "gates": "移动与转身慢，背后、侧翼与关节缝隙是破绽",
+            "content": "Wearing full heavy plate; slow and cumbersome",
+            "gates": "Slow to move and turn; his back, flanks and armor joints are weak points",
             "severity": null,
             "visibility": "public",
             "source": "scenario",
-            "lifetime": "持久（着甲）",
+            "lifetime": "persistent (while armored)",
             "ttl": null,
             "created_turn": null
           }
         ],
         "items": {
           "greatsword": {
-            "name": "巨剑",
-            "kind": "武器",
+            "name": "Greatsword",
+            "kind": "weapon",
             "traits": [
-              "厚重",
-              "势大力沉、可破盾"
+              "massive",
+              "crushing force, can break shields"
             ],
             "state": "intact",
-            "location": "双手斜提"
+            "location": "held at an angle in both hands"
           }
         },
         "carried": [],
@@ -280,28 +280,28 @@
         "gauge": 0
       },
       "marta": {
-        "posture": "缩在西侧吧台后，一手已悄悄摸向柜台下",
+        "posture": "Crouched behind the bar on the west side, one hand already reaching under the counter",
         "conditions": [],
         "status_effects": [],
         "items": {
           "crossbow": {
-            "name": "上弦弩",
-            "kind": "武器",
+            "name": "Loaded crossbow",
+            "kind": "weapon",
             "traits": [
-              "已上弦",
-              "一发，再装需时"
+              "already loaded",
+              "one shot; reloading takes time"
             ],
             "state": "intact",
-            "location": "藏在柜台下"
+            "location": "hidden under the counter"
           },
           "coinbox": {
-            "name": "钱箱",
-            "kind": "杂物",
+            "name": "Cash box",
+            "kind": "misc",
             "traits": [
-              "一箱银币"
+              "a box of silver coins"
             ],
             "state": "intact",
-            "location": "吧台后脚边"
+            "location": "at her feet behind the bar"
           }
         },
         "carried": [],
@@ -313,8 +313,8 @@
     "scene": {
       "spatial": [
         {
-          "content": "加雷斯堵在踹开的木门处，那是唯一的明面出口",
-          "gates": "夺门而出须先过加雷斯这一关",
+          "content": "Gareth is blocking the kicked-in door, the only visible exit",
+          "gates": "Anyone escaping through the door has to get past Gareth first",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -323,8 +323,8 @@
           "created_turn": null
         },
         {
-          "content": "长桌与将熄的火塘横在堂中，吧台在西侧",
-          "gates": "可掀桌为障、可借火塘明火；吧台后是玛塔的地盘",
+          "content": "Long tables and the dying hearth fill the middle of the room; the bar is on the west side",
+          "gates": "Tables can be flipped for cover and the hearth provides open flame; behind the bar is Marta's territory",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -333,8 +333,8 @@
           "created_turn": null
         },
         {
-          "content": "后堂有一道仅玛塔与熟客知晓的暗门，通向马厩",
-          "gates": "经玛塔点头或胁迫，可作另一条退路",
+          "content": "The back room has a hidden door to the stable, known only to Marta and regulars",
+          "gates": "With Marta's consent, or under pressure, it offers another way out",
           "severity": null,
           "visibility": "gm",
           "source": "scenario",
@@ -345,8 +345,8 @@
       ],
       "scene_facts": [
         {
-          "content": "墙上挂着几把待修的旧兵器，触手可及",
-          "gates": "可顺手取作武器",
+          "content": "A few old weapons waiting for repair hang on the wall, within reach",
+          "gates": "Can be grabbed and used as weapons",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -355,8 +355,8 @@
           "created_turn": null
         },
         {
-          "content": "火塘与梁上油灯燃着，火苗在穿堂风里摇曳",
-          "gates": "可取明火——火攻、点燃酒桶、惊退",
+          "content": "The hearth and the oil lamps on the beams are lit, flames flickering in the draft",
+          "gates": "Open flame is available: fire attacks, lighting the liquor barrels, scaring someone off",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -365,8 +365,8 @@
           "created_turn": null
         },
         {
-          "content": "墙角堆着几桶烈酒，离火塘不远",
-          "gates": "泼洒加明火可成火海；亦可作威胁玛塔的筹码",
+          "content": "Several barrels of strong liquor are stacked in the corner, not far from the hearth",
+          "gates": "Spilled and lit, they become a sea of fire; they are also leverage against Marta",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -375,20 +375,20 @@
           "created_turn": null
         },
         {
-          "content": "木门方才被一脚踹开，碎木与尘土还在门口腾飞",
-          "gates": "门口一时视线略乱，可借乱抢攻或脱身",
+          "content": "The door was just kicked in; splinters and dust are still swirling in the doorway",
+          "gates": "Visibility at the door is briefly poor; someone could use the confusion to rush in or slip out",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
-          "lifetime": "转瞬",
+          "lifetime": "momentary",
           "ttl": 2,
           "created_turn": 0
         }
       ],
       "social_facts": [
         {
-          "content": "加雷斯奉圣堂之命追索『裂界残卷』已半年，今夜堵上门来，要卷或要命",
-          "gates": "师出有名；化解或拼杀皆改变局面",
+          "content": "Gareth has been hunting the Rift Codex on the Cathedral's orders for half a year; tonight he has come to the door demanding the codex or a life",
+          "gates": "He has a legitimate mandate; defusing him or fighting him will both change the situation",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -397,8 +397,8 @@
           "created_turn": null
         },
         {
-          "content": "瑟兰怀揣加雷斯志在必得的『裂界残卷』",
-          "gates": "残卷既是筹码也是软肋，毁损或被夺则失据",
+          "content": "Seran carries the Rift Codex that Gareth is determined to take",
+          "gates": "The codex is both leverage and a liability; if it is damaged or taken, that leverage is lost",
           "severity": null,
           "visibility": "public",
           "source": "scenario",
@@ -407,8 +407,8 @@
           "created_turn": null
         },
         {
-          "content": "瑟兰与莉薇早有默契：一旦开打，莉薇先布迷雾、瑟兰借乱抢攻门口夺路",
-          "gates": "我方可据此协同；被识破则失效",
+          "content": "Seran and Livia have a standing understanding: if a fight breaks out, Livia lays down fog first and Seran uses the cover to rush the door",
+          "gates": "The allies can coordinate on this; if it is seen through, it no longer works",
           "severity": null,
           "visibility": "faction:ally",
           "source": "scenario",
@@ -417,8 +417,8 @@
           "created_turn": null
         },
         {
-          "content": "（真相）下令追杀的圣堂主教，正是当年灭加雷斯满门、嫁祸于人的真凶；裂界残卷里就藏着铁证——加雷斯追错了仇人",
-          "gates": "若揭破并令其采信，可动摇其杀意、甚至令其倒戈（enemy→neutral/ally）；这是化敌的关键，也是我方最后底牌",
+          "content": "(Truth) The Cathedral bishop who ordered the hunt is the real culprit who wiped out Gareth's family and framed someone else; the Rift Codex contains the proof. Gareth is hunting the wrong person.",
+          "gates": "If revealed and Gareth is convinced, his resolve to kill wavers and he may even switch sides (enemy -> neutral/ally); this is the key to turning him, and the allies' last card",
           "severity": null,
           "visibility": "gm",
           "source": "scenario",
@@ -431,7 +431,7 @@
     "faction_private": {
       "ally": {
         "plans": [
-          "开打则莉薇先布迷雾扰敌、瑟兰借乱抢门夺路；非到万不得已不揭残卷真相——那是动摇加雷斯的最后底牌"
+          "If it comes to a fight, Livia lays down fog to disrupt the enemy and Seran uses the confusion to break for the door; do not reveal the truth in the codex unless there is no other choice, since it is the last card for shaking Gareth's resolve"
         ]
       }
     }
