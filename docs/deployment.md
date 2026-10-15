@@ -5,14 +5,14 @@
 The project was deployed in two phases, both driven by the same GitHub Actions pipeline (`git push master` -> test -> build -> push image -> deploy):
 
 1. **AWS phase**: ECR + ECS Express Mode + RDS PostgreSQL in a custom VPC, with keyless deploys via GitHub OIDC.
-2. **GCP phase** (from 2026-06): Artifact Registry + Cloud Run + Cloud SQL PostgreSQL, with keyless deploys via Workload Identity Federation.
+2. **GCP phase** (from 2026-07): Artifact Registry + Cloud Run + Cloud SQL PostgreSQL, with keyless deploys via Workload Identity Federation.
 
 The application itself did not change between phases: `config.py` and Alembic read `DATABASE_URL` directly, so moving clouds only touched the workflow, the Dockerfile and this document.
 
 ### Why it moved to GCP
-The migration commit does not record one specific trigger, but the differences that mattered for a low-traffic demo are documented below:
-- **Cost model**: Cloud Run scales to zero and bills nothing while idle, whereas ECS Express (Fargate + ALB) bills for as long as the service exists, which meant tearing it down between demos.
-- **Less networking**: Cloud Run reaches the internet directly and connects to Cloud SQL through the built-in connector (a unix socket), so there is no VPC, subnet or security-group setup to maintain.
+**Cost.** This is a personal project with low, bursty traffic, and the AWS setup billed around the clock whether anyone was playing or not. Moving to GCP cut the idle cost:
+- **Cost model**: Cloud Run scales to zero and bills nothing while idle, whereas ECS Express (Fargate + ALB) bills for as long as the service exists, which meant tearing it down between demos to save money.
+- **Less networking**: Cloud Run reaches the internet directly and connects to Cloud SQL through the built-in connector (a unix socket), so there is no VPC, subnet or security-group setup to maintain (and no networking resources to pay for).
 
 Shared pieces (both phases): the container image, migrations on startup, the GitHub Variables/Secrets pattern, and the principle that server-side secrets never reach the frontend, the repo or the image.
 

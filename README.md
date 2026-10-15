@@ -97,7 +97,7 @@ The deployment evolved in two phases:
 | Network | Custom VPC: public app subnet, private DB subnet, no NAT gateway | No VPC needed |
 | CI auth | GitHub OIDC → IAM role | Workload Identity Federation → service account |
 
-The application and migrations needed no changes for the move: both read a single `DATABASE_URL`. Full write-up, including the reasoning behind each choice: [docs/deployment.md](docs/deployment.md).
+The move was about cost: for a low-traffic personal project, scale-to-zero Cloud Run stops billing while idle, where the ECS/ALB setup billed around the clock. The application and migrations needed no changes for the move: both read a single `DATABASE_URL`. Full write-up, including the reasoning behind each choice: [docs/deployment.md](docs/deployment.md).
 
 ## Running locally
 
