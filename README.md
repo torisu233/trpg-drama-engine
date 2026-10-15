@@ -9,6 +9,8 @@ Players co-write a tabletop-style scene with AI-controlled allies and opponents.
 
 The core design idea is that **LLM output is untrusted input**: models propose, deterministic code disposes.
 
+![A turn in progress: each character's single action, the adjudicated narration, the action gauge, and the player's turn to respond](docs/media/play-beats.png)
+
 ## Highlights
 
 - **Structured LLM outputs with automatic re-asking.** Every agent call goes through [instructor](https://github.com/567-labs/instructor) + Pydantic schemas; validation errors are fed back to the model and retried ([`backend/llm_client.py`](backend/llm_client.py)).
@@ -19,6 +21,15 @@ The core design idea is that **LLM output is untrusted input**: models propose, 
 - **Streaming gameplay.** Each turn streams as NDJSON snapshots; player-visible parts are revealed as soon as they exist while adjudication and narration are still running, without leaking hidden enemy intent.
 
 > The hosted demo has been shut down. The deploy job is disabled unless the repository variable `DEPLOY_ENABLED` is `true`; see [docs/deployment.md](docs/deployment.md) for how it worked.
+
+## Screenshots
+
+| Fog of war | Authoring agent |
+|---|---|
+| ![Player view: allies show their full cards, the enemy only what can be observed](docs/media/play-fog-of-war.png) | ![Authoring page: editable scenario panel next to a chat with the stateless authoring agent](docs/media/authoring.png) |
+| Allies' cards are fully visible; the enemy shows only what the player can observe. Secrets stay with the adjudicator. | The authoring agent edits one block of the scenario per turn and merges it field by field, next to a fully editable panel. |
+
+All screenshots are from a local run of the bundled [Greywater Bridge](scenarios/greywater-bridge.json) scenario with DeepSeek as the model.
 
 ## Architecture
 
